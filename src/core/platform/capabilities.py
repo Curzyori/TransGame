@@ -20,6 +20,7 @@ LANGUAGES = {
     "Vietnamese": "vi",
     "Thai": "th",
     "Spanish": "es",
+    "Ukrainian": "uk",
 }
 
 # Map UI language codes to OCR engine language codes
