@@ -38,6 +38,7 @@ OCR_LANG_MAPPING = {
     "vi": {"tess": "vie", "easy": "vi", "paddle": "vi", "rapid": "latin"},
     "th": {"tess": "tha", "easy": "th", "paddle": "th", "rapid": "th"},
     "es": {"tess": "spa", "easy": "es", "paddle": "es", "rapid": "latin"},
+    "uk": {"tess": "ukr", "easy": "uk", "paddle": "uk", "rapid": "cyrillic"},
 }
 
 PORTAL_ORIENTATION = -1
