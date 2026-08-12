@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QApplic
 from src.core.worker import OCRWorker
 from src.ui.overlay_window import TransparentOverlay
 from src.core.sniper import SniperFactory
-from src.config import LANGUAGES, SETTINGS_FILE, PRESETS_FILE, DPI_SCALE_DEFAULT, SETTINGS_TOPMOST_HOTKEY, TEMPORARY_REGION_HOTKEY
+from src.config import LANGUAGES, SETTINGS_FILE, PRESETS_FILE, DPI_SCALE_DEFAULT, SETTINGS_TOPMOST_HOTKEY, TEMPORARY_REGION_HOTKEY, get_language_code
 from src.core.shortcut import GlobalHotkey
 from src.i18n import _
 from src.ui.tabs import (
@@ -385,8 +385,8 @@ class ControlPanel(QWidget):
         """)
 
     def update_languages(self):
-        source_code = LANGUAGES.get(self.combo_source.currentText(), "en")
-        target_code = LANGUAGES.get(self.combo_target.currentText(), "tr")
+        source_code = get_language_code(self.combo_source.currentText(), "en")
+        target_code = get_language_code(self.combo_target.currentText(), "tr")
         self.worker.set_languages(source_code, target_code)
         self.save_settings()
 
