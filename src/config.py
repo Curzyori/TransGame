@@ -26,6 +26,25 @@ COMPOSITOR = get_compositor()
 
 DPI_SCALE_DEFAULT = 1.0  # Auto-detected from QScreen.devicePixelRatio, user can override
 
+
+def get_language_code(display_name: str, fallback: str) -> str:
+    language = LANGUAGES.get(display_name, {})
+    if isinstance(language, dict):
+        return language.get("code", fallback)
+    return language or fallback
+
+
+def get_translation_language_code(language_code: str, provider: str, direction: str):
+    for language in LANGUAGES.values():
+        if isinstance(language, dict) and language.get("code") == language_code:
+            provider_codes = language.get(provider, {})
+            if direction in provider_codes:
+                return provider_codes[direction]
+            return language_code
+        if language == language_code:
+            return language_code
+    return language_code
+
 if not os.path.exists(CONFIG_DIR):
     os.makedirs(CONFIG_DIR, exist_ok=True)
 
