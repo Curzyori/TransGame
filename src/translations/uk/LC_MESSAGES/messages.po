@@ -115,15 +115,15 @@ msgstr "Версія: {version}"
 
 #: src/ui/tabs/about_tab.py:15
 msgid "A real-time OCR-based translation tool."
-msgstr "Інструмент перекладу в реальному часі на основі OCR."
+msgstr "OCR-перекладач у реальному часі."
 
 #: src/ui/tabs/about_tab.py:16
 msgid "Select a screen region, capture text via OCR,"
-msgstr "Виберіть область екрана, захопіть текст за допомогою OCR,"
+msgstr "Виберіть ділянку та захопіть текст,"
 
 #: src/ui/tabs/about_tab.py:17
 msgid "and translate instantly with Google or DeepL."
-msgstr "і миттєво перекладайте за допомогою Google або DeepL."
+msgstr "Google чи DeepL з миттєвим перекладом."
 
 #: src/ui/tabs/appearance_tab.py:12
 msgid "Font Family:"
@@ -179,11 +179,11 @@ msgstr ""
 
 #: src/ui/tabs/hotkey_tab.py:165
 msgid "Settings topmost key:"
-msgstr "Клавіша закріплення налаштувань зверху:"
+msgstr "Закріплення екрана:"
 
 #: src/ui/tabs/hotkey_tab.py:175
 msgid "Temporary region key:"
-msgstr "Клавіша тимчасової області:"
+msgstr "Клавіша тимч. області:"
 
 #: src/ui/tabs/hotkey_tab.py:181
 msgid "Click a shortcut field, then press the key combination you want to use."
