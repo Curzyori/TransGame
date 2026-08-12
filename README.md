@@ -98,7 +98,9 @@ sudo dnf install -y git \
   tesseract-langpack-rus \
   tesseract-langpack-ara \
   tesseract-langpack-heb \
+  tesseract-langpack-por \
   tesseract-langpack-tur \
+  tesseract-langpack-ukr \
   tesseract-langpack-vie \
   tesseract-langpack-tha \
   tesseract-langpack-spa \
@@ -128,7 +130,9 @@ sudo apt install -y git \
   tesseract-ocr-rus \
   tesseract-ocr-ara \
   tesseract-ocr-heb \
+  tesseract-ocr-por \
   tesseract-ocr-tur \
+  tesseract-ocr-ukr \
   tesseract-ocr-vie \
   tesseract-ocr-tha \
   tesseract-ocr-spa \
