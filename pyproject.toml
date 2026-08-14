@@ -44,4 +44,5 @@ where = ["."]
 include = ["src*"]
 
 [tool.setuptools.package-data]
+"src" = ["translations/*/LC_MESSAGES/*.mo"]
 "src.ui" = ["assets/*.png"]
