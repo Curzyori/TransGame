@@ -10,6 +10,7 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 build/
 develop-eggs/
 dist/
@@ -62,3 +63,17 @@ target/
 
 #Ipython Notebook
 .ipynb_checkpoints
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Testing & Linting
+.pytest_cache/
+.ruff_cache/
+
+# Agents & Analysis
+.claude/
+graphify-out/
+.graphify-out/
