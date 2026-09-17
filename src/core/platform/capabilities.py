@@ -86,6 +86,11 @@ LANGUAGES = {
         "google": {"source": "uk", "target": "uk"},
         "deepl": {"source": "uk", "target": "uk"},
     },
+    "Indonesian": {
+        "code": "id",
+        "google": {"source": "id", "target": "id"},
+        "deepl": {"source": "id", "target": "id"},
+    },
 }
 
 # Map UI language codes to OCR engine language codes
@@ -105,6 +110,7 @@ OCR_LANG_MAPPING = {
     "es": {"tess": "spa", "easy": "es", "paddle": "es", "rapid": "latin"},
     "pt-BR": {"tess": "por", "easy": "pt", "paddle": "pt", "rapid": "latin"},
     "uk": {"tess": "ukr", "easy": "uk", "paddle": "uk", "rapid": "cyrillic"},
+    "id": {"tess": "ind", "easy": "id", "paddle": "en", "rapid": "latin"},
 }
 
 PORTAL_ORIENTATION = -1
