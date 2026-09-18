@@ -2,7 +2,7 @@ import os
 
 
 OCR_ENGINES = ["RapidOCR","Tesseract", "EasyOCR"]  # "PaddleOCR" (uncomment when paddlepaddle is available)
-TRANSLATION_ENGINES = ["Google", "DeepL"]
+TRANSLATION_ENGINES = ["Google", "DeepL", "Argos (Offline)"]
 SCREENSHOT_ENGINES = ["Portal", "Spectacle"]
 
 LANGUAGES = {

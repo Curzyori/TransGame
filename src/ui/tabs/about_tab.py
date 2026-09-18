@@ -14,6 +14,6 @@ def build_about_tab(panel):
     tab_about_layout.addWidget(QLabel(""))
     tab_about_layout.addWidget(QLabel(_("A real-time OCR-based translation tool.")))
     tab_about_layout.addWidget(QLabel(_("Select a screen region, capture text via OCR,")))
-    tab_about_layout.addWidget(QLabel(_("and translate instantly with Google or DeepL.")))
+    tab_about_layout.addWidget(QLabel(_("and translate instantly with Google, DeepL, or Offline (Argos).")))
     tab_about_layout.addStretch()
     return tab_about

@@ -1,11 +1,13 @@
 from src.core.translation.google_engine import GoogleEngine
 from src.core.translation.deepl_engine import DeepLTranslatorEngine
+from src.core.translation.argos_engine import ArgosEngine
 
 class TranslatorManager:
     def __init__(self):
         self.translators = {
             "Google": GoogleEngine(),
-            "DeepL": DeepLTranslatorEngine()
+            "DeepL": DeepLTranslatorEngine(),
+            "Argos (Offline)": ArgosEngine(),
         }
         self.current_translator_name = "Google"
         self._source_lang = "en"

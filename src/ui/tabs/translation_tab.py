@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QLineEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
 from src.config import LANGUAGES, TRANSLATION_ENGINES
 from src.i18n import _
@@ -33,11 +33,31 @@ def build_translation_tab(panel):
     panel.combo_target = QComboBox()
     panel.combo_target.setFocusPolicy(Qt.NoFocus)
     panel.combo_target.addItems(list(LANGUAGES.keys()))
-    panel.combo_target.setCurrentText("Turkish")
+    panel.combo_target.setCurrentText("Indonesian")
     panel.combo_target.currentTextChanged.connect(panel.update_languages)
     v_target.addWidget(panel.combo_target)
     h_lang.addLayout(v_target)
     tab_translation_layout.addLayout(h_lang)
+
+    # Offline Model Status Widget
+    panel.offline_status_container = QWidget()
+    offline_layout = QHBoxLayout(panel.offline_status_container)
+    offline_layout.setContentsMargins(0, 4, 0, 4)
+    panel.offline_status_label = QLabel(_("Model: Checking..."))
+    panel.offline_status_label.setStyleSheet("font-weight: bold;")
+    offline_layout.addWidget(panel.offline_status_label)
+
+    panel.btn_download_model = QPushButton(_("📥 Download Model (68 MB)"))
+    panel.btn_download_model.setStyleSheet(
+        "background-color: #0288D1; color: white; font-weight: bold; padding: 4px 8px; border-radius: 4px;"
+    )
+    panel.btn_download_model.clicked.connect(panel.download_offline_model)
+    panel.btn_download_model.hide()
+    offline_layout.addWidget(panel.btn_download_model)
+    offline_layout.addStretch()
+
+    tab_translation_layout.addWidget(panel.offline_status_container)
+    panel.offline_status_container.hide()
 
     panel.api_key_label = QLabel(_("API Key"))
     tab_translation_layout.addWidget(panel.api_key_label)

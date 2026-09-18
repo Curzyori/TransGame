@@ -13,7 +13,7 @@ By "sniping" a specific area of your screen, USTA continuously monitors that reg
 *   **KDE & Wayland Support:** Currently runs in `xcb` mode, specifically tailored for KDE Plasma environments using native tools for region selection and capture.
 *   **Sniper Mode Overlay:** Modular region selection system to target subtitle areas.
 *   **Modular OCR Engine Subsystem:** Dynamic multi-backend support (Tesseract & EasyOCR) for accurate text extraction.
-*   **Dual-Engine Translation Subsystem:** Context-aware translations via Google Translate and DeepL.
+*   **Multi-Engine Translation Subsystem:** Real-time translations via Google Translate, DeepL, and **100% Offline Argos Translate** (CTranslate2/OpenNMT, zero rate limits, zero GPU usage).
 *   **Unix Socket IPC Broadcasting:** Real-time JSON broadcast of every translation to a local Unix socket, enabling integration with other tools (e.g., custom subtitles, logging, or OBS).
 *   **Global Shortcuts & IPC Integration:** Utilizes a lightweight single-instance architecture to handle background processes and external CLI-driven shortcuts.
 
@@ -212,7 +212,7 @@ instead.
 ## 🛠️ Tech Stack
 * **GUI:** PySide6
 * **OCR:** pytesseract, easyocr
-* **Translation:** deep-translator
+* **Translation:** deep-translator, argostranslate (offline)
 * **Desktop Environments:** KDE Plasma (optimized) / GNOME
 
 ---

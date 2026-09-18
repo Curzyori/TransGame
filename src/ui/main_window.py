@@ -1,7 +1,7 @@
 import time
 import pickle
 import os
-from PySide6.QtCore import Qt, QRect, QPoint, QTimer, Signal, Slot
+from PySide6.QtCore import Qt, QRect, QPoint, QTimer, Signal, Slot, QThread
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QApplication, QColorDialog, QProgressBar, QTabWidget, QMessageBox
 from src.core.worker import OCRWorker
@@ -19,6 +19,24 @@ from src.ui.tabs import (
     build_status_tab,
     build_translation_tab,
 )
+
+class ModelDownloadWorker(QThread):
+    progress = Signal(int)
+    finished_success = Signal(bool, str)
+
+    def __init__(self, from_code: str = "en", to_code: str = "id", parent=None):
+        super().__init__(parent)
+        self.from_code = from_code
+        self.to_code = to_code
+
+    def run(self):
+        from src.core.translation.argos_engine import ArgosEngine
+        engine = ArgosEngine(self.from_code, self.to_code)
+        success = engine.download_and_install_package(
+            self.from_code, self.to_code, progress_callback=self.progress.emit
+        )
+        msg = _("Model installed successfully!") if success else _("Failed to download model.")
+        self.finished_success.emit(success, msg)
 
 class ControlPanel(QWidget):
     temporary_region_hotkey_pressed = Signal()
@@ -99,14 +117,20 @@ class ControlPanel(QWidget):
         self.worker.new_translation.connect(self.overlay.update_text)
         self.worker.performance_update.connect(self.update_performance_bar)
         self.worker.running_status.connect(self.update_system_status)
+        self.worker.translation_status.connect(self.update_translation_activity)
+        self.combo_ocr.currentTextChanged.connect(self.update_active_engines_label)
+        self.combo_translator.currentTextChanged.connect(self.update_active_engines_label)
         self.overlay.main_window_topmost_requested.connect(self.set_settings_always_on_top)
         self._settings_always_on_top = False
-        
+        self._model_download_worker = None
+
         # Load settings or set defaults
         self.load_settings()
 
         # Initialize status tab with current rect
         self.update_rect_label()
+        self.update_active_engines_label()
+        self._update_offline_model_status()
         self.refresh_preset_list()
         self.show()
         
@@ -389,6 +413,8 @@ class ControlPanel(QWidget):
         target_code = get_language_code(self.combo_target.currentText(), "tr")
         self.worker.set_languages(source_code, target_code)
         self.save_settings()
+        self._update_offline_model_status()
+        self.update_active_engines_label()
 
     def choose_color(self):
         color = QColorDialog.getColor()
@@ -539,6 +565,8 @@ class ControlPanel(QWidget):
     def on_translator_changed(self, engine: str):
         """Called when the translation engine combo box changes."""
         self._apply_api_key_for_current_engine()
+        self._update_offline_model_status()
+        self.update_active_engines_label()
 
     def on_api_key_changed(self, text: str):
         """Called when the user types in the API key text box."""
@@ -546,6 +574,80 @@ class ControlPanel(QWidget):
         self.api_keys[engine] = text
         self.worker.set_api_key(engine, text)
         self.save_settings()
+
+    @Slot(bool)
+    def update_translation_activity(self, is_translating: bool):
+        if is_translating:
+            self.translation_activity_label.setText(_("Status: Translating... ⚡"))
+            self.translation_activity_label.setStyleSheet("color: #1976D2; font-weight: bold;")
+        else:
+            self.translation_activity_label.setText(_("Status: Idle"))
+            self.translation_activity_label.setStyleSheet("color: #757575;")
+
+    def update_active_engines_label(self):
+        ocr_eng = self.combo_ocr.currentText()
+        trans_eng = self.combo_translator.currentText()
+        src_lang = self.combo_source.currentText()
+        tgt_lang = self.combo_target.currentText()
+        self.active_engines_label.setText(
+            f"{ocr_eng} ➔ {trans_eng} ({src_lang} ➔ {tgt_lang})"
+        )
+
+    def _update_offline_model_status(self):
+        """Update offline model status badge and button when Argos engine is selected."""
+        engine = self.combo_translator.currentText()
+        if engine != "Argos (Offline)":
+            if hasattr(self, "offline_status_container"):
+                self.offline_status_container.hide()
+            return
+
+        self.offline_status_container.show()
+        source_code = get_language_code(self.combo_source.currentText(), "en")
+        target_code = get_language_code(self.combo_target.currentText(), "id")
+
+        from src.core.translation.argos_engine import ArgosEngine
+        argos = self.worker.translator_manager.translators.get("Argos (Offline)")
+        if not argos or not isinstance(argos, ArgosEngine):
+            argos = ArgosEngine(source_code, target_code)
+
+        if argos.is_model_installed(source_code, target_code):
+            self.offline_status_label.setText(_("Model: Ready (Offline) ✅"))
+            self.offline_status_label.setStyleSheet("color: #2E7D32; font-weight: bold;")
+            self.btn_download_model.hide()
+        else:
+            self.offline_status_label.setText(
+                _("Model {src}➔{tgt} not installed ⚠️").format(src=source_code, tgt=target_code)
+            )
+            self.offline_status_label.setStyleSheet("color: #E65100; font-weight: bold;")
+            self.btn_download_model.setText(_("📥 Download Model (68 MB)"))
+            self.btn_download_model.setEnabled(True)
+            self.btn_download_model.show()
+
+    def download_offline_model(self):
+        """Downloads the offline model package in a background thread."""
+        source_code = get_language_code(self.combo_source.currentText(), "en")
+        target_code = get_language_code(self.combo_target.currentText(), "id")
+
+        self.btn_download_model.setEnabled(False)
+        self.offline_status_label.setText(_("Downloading model... 0%"))
+        self.offline_status_label.setStyleSheet("color: #0288D1; font-weight: bold;")
+
+        self._model_download_worker = ModelDownloadWorker(source_code, target_code, self)
+        self._model_download_worker.progress.connect(self._on_model_download_progress)
+        self._model_download_worker.finished_success.connect(self._on_model_download_finished)
+        self._model_download_worker.start()
+
+    @Slot(int)
+    def _on_model_download_progress(self, percent: int):
+        self.offline_status_label.setText(_("Downloading model... {pct}%").format(pct=percent))
+
+    @Slot(bool, str)
+    def _on_model_download_finished(self, success: bool, message: str):
+        self._update_offline_model_status()
+        if success:
+            QMessageBox.information(self, _("Offline Model"), message)
+        else:
+            QMessageBox.warning(self, _("Offline Model"), message)
 
     # ---------- Preset Management ----------
     def _load_presets_dict(self):
