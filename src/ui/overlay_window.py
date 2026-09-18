@@ -81,31 +81,32 @@ class TransparentOverlay(QWidget):
     def __init__(self, title="USTA_TRANSLATION_OVERLAY", enable_hotkey=True):
         super().__init__()
         self.setWindowTitle(title)
-        self.setWindowFlags(Qt.WindowStaysOnTopHint |
-                            Qt.FramelessWindowHint |
-                            Qt.WindowDoesNotAcceptFocus |
-                            Qt.Tool |
-                            Qt.X11BypassWindowManagerHint)
+        self.setWindowFlags(
+            Qt.WindowStaysOnTopHint
+            | Qt.FramelessWindowHint
+            | Qt.WindowDoesNotAcceptFocus
+            | Qt.Tool
+            | Qt.X11BypassWindowManagerHint
+        )
 
         self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.setAttribute(Qt.WA_ShowWithoutActivating)
-        self.setMouseTracking(True)
-        self.resize(800, 200)
+        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.resize(600, 100)
 
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
 
-        # Style variables
+        # Style variables - Google Lens default styling
         self.font_family = "Arial"
-        self.font_size = 20
-        self.font_color = "white"
-        self.bg_color = "#000000"
-        self.bg_opacity = 180
-        self._show_corner_lines = False
+        self.font_size = 19
+        self.font_color = "#FFFFFF"
+        self.bg_color = "#1F1F1F"
+        self.bg_opacity = 235
         self._is_scanning = False
 
-        self.label = CornerLabel(self)
-        self.label.setText("Translation will appear here.")
+        self.label = QLabel(self)
+        self.label.setText("")
         self.label.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.label.setWordWrap(True)
         self.label.setAlignment(Qt.AlignCenter)
@@ -121,22 +122,14 @@ class TransparentOverlay(QWidget):
                 self.settings_topmost_hotkey,
                 self._emit_settings_topmost_hotkey_pressed,
             )
-            self.settings_topmost_hotkey_pressed.connect(self._handle_settings_topmost_hotkey_pressed)
+            self.settings_topmost_hotkey_pressed.connect(
+                self._handle_settings_topmost_hotkey_pressed
+            )
             self._settings_topmost_hotkey.start()
 
-        self.hide_timer = QTimer(self)
-        self.hide_timer.setSingleShot(True)
-        self.hide_timer.timeout.connect(self._on_hide_timer_timeout)
-
-        self.set_mode(False)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.raise_)
         self.timer.start(2000)
-
-        # Manual drag state (X11BypassWindowManagerHint bypasses WM)
-        self._drag_mode = None  # "move" or "resize"
-        self._drag_start_pos = None
-        self._drag_start_geometry = None
 
     def _emit_settings_topmost_hotkey_pressed(self):
         self.settings_topmost_hotkey_pressed.emit()
@@ -164,30 +157,18 @@ class TransparentOverlay(QWidget):
             f"font-family: '{self.font_family}'; "
             f"font-size: {self.font_size}px; "
             f"font-weight: bold; "
-            f"background: rgba({r},{g},{b},{current_opacity}); border-radius: 6px; padding: 6px 10px;"
+            f"background: rgba({r},{g},{b},{current_opacity}); "
+            f"border: 1px solid rgba(255,255,255,{30 if has_text else 0}); "
+            f"border-radius: 8px; padding: 6px 12px;"
         )
         self.label.setStyleSheet(style)
         self.label.update()
 
-    def _on_hide_timer_timeout(self):
-        self.label.setText("")
-        self.update_style()
-
     def set_target_rect(self, rect):
-        """Aligns the overlay window geometry directly over the selected capture region."""
+        """Aligns the overlay window geometry directly over the detected dialogue box."""
         if rect and rect.width() > 10 and rect.height() > 10:
-            self.setGeometry(rect)
+            self.setGeometry(rect.adjusted(-6, -4, 6, 4))
             self.update_style()
-
-    def enterEvent(self, event):
-        self._show_corner_lines = True
-        self.label.set_corner_lines_visible(True)
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        self._show_corner_lines = False
-        self.label.set_corner_lines_visible(False)
-        super().leaveEvent(event)
 
     @Slot(str)
     def set_font_family(self, family):
@@ -215,15 +196,21 @@ class TransparentOverlay(QWidget):
         self.update_style()
 
     @Slot(str)
-    def update_text(self, text):
+    def update_text(self, text: str):
         clean = (text or "").strip()
         self.label.setText(clean)
         self.update_style()
         if clean:
+            self.show()
             self.raise_()
-            self.hide_timer.start(5000)
         else:
-            self.hide_timer.stop()
+            self.hide()
+
+    def update_lens_translation(self, text: str, rect=None):
+        """Updates text and optionally repositions the overlay directly on top of the text."""
+        if rect:
+            self.set_target_rect(rect)
+        self.update_text(text)
 
     def _toggle_main_window_topmost(self):
         self._main_window_topmost_requested = not self._main_window_topmost_requested
@@ -251,56 +238,11 @@ class TransparentOverlay(QWidget):
 
     def set_mode(self, scan):
         self._is_scanning = scan
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, scan)
-        self.setCursor(Qt.ArrowCursor if scan else Qt.SizeAllCursor)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         if scan:
             self.label.setText("")
             self.update_style()
         else:
-            self.hide_timer.stop()
-            self.label.setText(_("Translation will appear here."))
+            self.label.setText("")
             self.update_style()
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self._drag_start_pos = event.globalPosition().toPoint()
-            self._drag_start_geometry = self.geometry()
-            if event.position().x() > self.width() - 20 and event.position().y() > self.height() - 20:
-                self._drag_mode = "resize"
-                self.setCursor(Qt.SizeFDiagCursor)
-            else:
-                self._drag_mode = "move"
-                self.setCursor(Qt.SizeAllCursor)
-            event.accept()
-
-    def mouseMoveEvent(self, event):
-        if self._drag_mode is None:
-            if event.position().x() > self.width() - 20 and event.position().y() > self.height() - 20:
-                self.setCursor(Qt.SizeFDiagCursor)
-            else:
-                self.setCursor(Qt.SizeAllCursor)
-            return
-
-        if self._drag_start_pos is None:
-            return
-
-        delta = event.globalPosition().toPoint() - self._drag_start_pos
-        if self._drag_mode == "move":
-            self.move(self._drag_start_geometry.x() + delta.x(),
-                      self._drag_start_geometry.y() + delta.y())
-        elif self._drag_mode == "resize":
-            new_w = max(200, self._drag_start_geometry.width() + delta.x())
-            new_h = max(60, self._drag_start_geometry.height() + delta.y())
-            self.resize(new_w, new_h)
-        event.accept()
-
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self._drag_mode = None
-            self._drag_start_pos = None
-            self._drag_start_geometry = None
-            if event.position().x() > self.width() - 20 and event.position().y() > self.height() - 20:
-                self.setCursor(Qt.SizeFDiagCursor)
-            else:
-                self.setCursor(Qt.SizeAllCursor)
-            event.accept()
+            self.hide()

@@ -197,7 +197,79 @@ class RapidOCREngine(BaseOCREngine):
 
         return lines
 
+    def read_dialogue_with_box(self, image_path: str):
+        """
+        Extracts translatable dialogue lines along with their unified bounding box (x, y, w, h).
+        Filters out non-translatable text (ping, numbers, telemetry, single keys, etc.).
+        """
+        if not self._initialize():
+            return "", None
+
+        try:
+            result = self.ocr(image_path)
+            if not result:
+                return "", None
+            if isinstance(result, tuple):
+                result = result[0]
+            if hasattr(result, "result"):
+                result = result.result
+
+            valid_lines = []
+            boxes = []
+
+            for item in result or []:
+                text = ""
+                box = None
+                conf = 1.0
+
+                if isinstance(item, (list, tuple)):
+                    if len(item) >= 3 and isinstance(item[1], str):
+                        box = item[0]
+                        text = item[1].strip()
+                        try:
+                            conf = float(item[2])
+                        except (TypeError, ValueError):
+                            conf = 1.0
+                    elif len(item) >= 2 and isinstance(item[1], (list, tuple)):
+                        box = item[0]
+                        text = item[1][0].strip() if item[1] else ""
+                        conf = float(item[1][1]) if len(item[1]) > 1 else 1.0
+
+                if text and conf > 0.2:
+                    from src.core.translation.text_cleaner import is_translatable_text
+                    if is_translatable_text(text):
+                        valid_lines.append(text)
+                        if box:
+                            try:
+                                xs = [p[0] for p in box]
+                                ys = [p[1] for p in box]
+                                boxes.append((min(xs), min(ys), max(xs), max(ys)))
+                            except Exception:
+                                pass
+
+            if not valid_lines:
+                return "", None
+
+            if boxes:
+                u_x1 = int(min(b[0] for b in boxes))
+                u_y1 = int(min(b[1] for b in boxes))
+                u_x2 = int(max(b[2] for b in boxes))
+                u_y2 = int(max(b[3] for b in boxes))
+                union_box = (u_x1, u_y1, max(10, u_x2 - u_x1), max(10, u_y2 - u_y1))
+            else:
+                union_box = None
+
+            full_text = " ".join(valid_lines)
+            return full_text.strip(), union_box
+        except Exception as e:
+            print(f"RapidOCR read_dialogue_with_box Error: {e}")
+            return "", None
+
     def read_text(self, image_path: str) -> str:
+        text, _ = self.read_dialogue_with_box(image_path)
+        if text:
+            return text
+
         if not self._initialize():
             return ""
 

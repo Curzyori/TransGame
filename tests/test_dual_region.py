@@ -3,32 +3,41 @@ from PySide6.QtCore import QRect
 from src.core.worker import OCRWorker
 
 
-class DualRegionTests(unittest.TestCase):
-    def test_worker_dual_region_setup(self):
+class LensWorkerTests(unittest.TestCase):
+    def test_worker_single_region_setup(self):
         worker = OCRWorker()
-        # Region 1 default
         self.assertIsNotNone(worker.capture_rect)
-        self.assertIsNone(worker.capture_rect_2)
 
-        # Set Region 1
+        # Set Region
         r1 = QRect(200, 600, 700, 100)
         worker.set_rect(r1)
         self.assertEqual(worker.capture_rect, r1)
 
-        # Set Region 2 (e.g. WuWa Interactive Prompt [F])
-        r2 = QRect(850, 350, 300, 150)
-        worker.set_rect_2(r2)
-        self.assertEqual(worker.capture_rect_2, r2)
-
-        # Clear Region 2
-        worker.set_rect_2(None)
-        self.assertIsNone(worker.capture_rect_2)
-
-    def test_worker_signals_exist(self):
+    def test_worker_signals_and_stabilization_state(self):
         worker = OCRWorker()
-        self.assertTrue(hasattr(worker, "new_translation_1"))
-        self.assertTrue(hasattr(worker, "new_translation_2"))
         self.assertTrue(hasattr(worker, "new_translation"))
+        self.assertTrue(hasattr(worker, "performance_update"))
+        self.assertTrue(hasattr(worker, "translation_status"))
+        self.assertTrue(hasattr(worker, "running_status"))
+
+        # Check stabilization thresholds
+        self.assertEqual(worker.STABILITY_COOLDOWN, 1.5)
+        self.assertEqual(worker.MAX_ACCUMULATION_TIME, 3.2)
+        self.assertEqual(worker.displayed_text, "")
+        self.assertEqual(worker.candidate_text, "")
+
+    def test_worker_async_translate_emits_box(self):
+        worker = OCRWorker()
+        emitted_results = []
+        worker.new_translation.connect(lambda txt, box: emitted_results.append((txt, box)))
+
+        target_box = QRect(300, 500, 400, 100)
+        worker._async_translate("Hello world", target_box)
+
+        self.assertEqual(len(emitted_results), 1)
+        trans_txt, box = emitted_results[0]
+        self.assertIn("Halo", trans_txt)
+        self.assertEqual(box, target_box)
 
 
 if __name__ == "__main__":

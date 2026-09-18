@@ -26,3 +26,11 @@ class OCRManager:
         if engine:
             return engine.read_text(image_path)
         return ""
+
+    def read_dialogue_with_box(self, image_path: str):
+        engine = self.engines.get(self.current_engine_name)
+        if engine and hasattr(engine, "read_dialogue_with_box"):
+            return engine.read_dialogue_with_box(image_path)
+        if engine:
+            return engine.read_text(image_path), None
+        return "", None

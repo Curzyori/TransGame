@@ -44,9 +44,8 @@ class ControlPanel(QWidget):
     def __init__(self):
         super().__init__()
         self.worker = OCRWorker()
-        self.overlay_1 = TransparentOverlay(title="USTA_OVERLAY_1", enable_hotkey=True)
-        self.overlay_2 = TransparentOverlay(title="USTA_OVERLAY_2", enable_hotkey=False)
-        self.overlay = self.overlay_1  # backward compatibility alias
+        self.overlay = TransparentOverlay(title="USTA_TRANSLATION_OVERLAY", enable_hotkey=True)
+        self.overlay_1 = self.overlay  # backward compatibility alias
         self._main_capture_rect = QRect(self.worker.capture_rect)
         self._main_dpi_scale = self.worker.dpi_scale
         self._temporary_region_active = False
@@ -100,25 +99,18 @@ class ControlPanel(QWidget):
         layout.addWidget(self.perf_bar)
 
         # --- Controls (outside tabs) ---
-        layout.addWidget(QLabel(_("<b>Controls (Dual-Region)</b>")))
+        layout.addWidget(QLabel(_("<b>Screen Area / Controls</b>")))
         h_reg = QHBoxLayout()
-        self.btn_reg_1 = QPushButton(_("🖼 Region 1 (Dialog)"))
-        self.btn_reg_1.setStyleSheet("background-color: #1565C0; color: white; font-weight: bold; padding: 8px;")
-        self.btn_reg_1.clicked.connect(self.select_region_1)
-        h_reg.addWidget(self.btn_reg_1)
+        self.btn_fullscreen = QPushButton(_("🖥 Full Screen"))
+        self.btn_fullscreen.setStyleSheet("background-color: #00897B; color: white; font-weight: bold; padding: 10px;")
+        self.btn_fullscreen.clicked.connect(self.select_fullscreen)
+        h_reg.addWidget(self.btn_fullscreen)
 
-        self.btn_reg_2 = QPushButton(_("🖼 Region 2 [F]"))
-        self.btn_reg_2.setStyleSheet("background-color: #0277BD; color: white; font-weight: bold; padding: 8px;")
-        self.btn_reg_2.clicked.connect(self.select_region_2)
-        h_reg.addWidget(self.btn_reg_2)
+        self.btn_reg = QPushButton(_("🖼 Select Region"))
+        self.btn_reg.setStyleSheet("background-color: #1565C0; color: white; font-weight: bold; padding: 10px;")
+        self.btn_reg.clicked.connect(self.select_region)
+        h_reg.addWidget(self.btn_reg)
         layout.addLayout(h_reg)
-
-        self.btn_clear_reg_2 = QPushButton(_("🗑 Clear Region 2"))
-        self.btn_clear_reg_2.setStyleSheet("background-color: #546E7A; color: white; padding: 4px;")
-        self.btn_clear_reg_2.clicked.connect(self.clear_region_2)
-        layout.addWidget(self.btn_clear_reg_2)
-
-        self.btn_reg = self.btn_reg_1  # backward compatibility alias
 
         self.btn_start = QPushButton(_("▶ Start"))
         self.btn_start.setStyleSheet("background-color: #2E7D32; color: white; font-weight: bold; padding: 10px;")
@@ -130,14 +122,13 @@ class ControlPanel(QWidget):
         self.btn_stop.clicked.connect(self.stop)
         layout.addWidget(self.btn_stop)
 
-        self.worker.new_translation_1.connect(self.overlay_1.update_text)
-        self.worker.new_translation_2.connect(self.overlay_2.update_text)
+        self.worker.new_translation.connect(self.overlay.update_lens_translation)
         self.worker.performance_update.connect(self.update_performance_bar)
         self.worker.running_status.connect(self.update_system_status)
         self.worker.translation_status.connect(self.update_translation_activity)
         self.combo_ocr.currentTextChanged.connect(self.update_active_engines_label)
         self.combo_translator.currentTextChanged.connect(self.update_active_engines_label)
-        self.overlay_1.main_window_topmost_requested.connect(self.set_settings_always_on_top)
+        self.overlay.main_window_topmost_requested.connect(self.set_settings_always_on_top)
         self._settings_always_on_top = False
         self._model_download_worker = None
 
@@ -150,27 +141,13 @@ class ControlPanel(QWidget):
         self._update_offline_model_status()
         self.refresh_preset_list()
         self.show()
-        
-        # Align overlay to the right of the control panel with a slight delay
-        # to ensure the window manager has placed the main window.
+
+        # Position overlay directly over the capture region
         QTimer.singleShot(100, self.align_overlay)
 
     def align_overlay(self):
-        """Positions the overlay window next to the main window."""
-        # Force a refresh of the window's geometry information
-        QApplication.processEvents()
-        
-        # Get the global position of the main window's frame
-        rect = self.frameGeometry()
-        target_x = rect.right() + 10
-        target_y = rect.top()
-        
-        # Move and then show the overlay
-        self.overlay.move(target_x, target_y)
-        self.overlay.show()
-        
-        # For windows bypassing the WM, move after show is often more reliable
-        self.overlay.move(target_x, target_y)
+        """Positions the overlay window directly over the capture region."""
+        self.overlay.set_target_rect(self.worker.capture_rect)
 
     @Slot(bool)
     def set_settings_always_on_top(self, enabled):
@@ -220,8 +197,7 @@ class ControlPanel(QWidget):
         return True
 
     def on_bg_opacity_changed(self, opacity):
-        self.overlay_1.set_bg_opacity(opacity)
-        self.overlay_2.set_bg_opacity(opacity)
+        self.overlay.set_bg_opacity(opacity)
         self.save_settings()
 
     def save_settings(self):
@@ -232,14 +208,12 @@ class ControlPanel(QWidget):
             "target_lang": self.combo_target.currentText(),
             "font_family": self.font_picker.currentFont().family(),
             "font_size": self.font_size_spin.value(),
-            "font_color": self.overlay_1.font_color,
-            "bg_color": self.overlay_1.bg_color,
-            "bg_opacity": self.overlay_1.bg_opacity,
+            "font_color": self.overlay.font_color,
+            "bg_color": self.overlay.bg_color,
+            "bg_opacity": self.overlay.bg_opacity,
             "translator_api_keys": self.api_keys,
             "capture_rect": (self.worker.capture_rect.x(), self.worker.capture_rect.y(),
                             self.worker.capture_rect.width(), self.worker.capture_rect.height()),
-            "capture_rect_2": (self.worker.capture_rect_2.x(), self.worker.capture_rect_2.y(),
-                              self.worker.capture_rect_2.width(), self.worker.capture_rect_2.height()) if self.worker.capture_rect_2 else None,
             "dpi_scale": self.worker.dpi_scale,
             "screenshot_engine": self.combo_screenshot.currentText(),
             "settings_topmost_hotkey": self.settings_topmost_hotkey,
@@ -266,28 +240,23 @@ class ControlPanel(QWidget):
 
                 font_family = s.get("font_family", "Arial")
                 self.font_picker.setCurrentFont(font_family)
-                self.overlay_1.set_font_family(font_family)
-                self.overlay_2.set_font_family(font_family)
+                self.overlay.set_font_family(font_family)
 
-                font_size = s.get("font_size", 20)
+                font_size = s.get("font_size", 19)
                 self.font_size_spin.setValue(font_size)
-                self.overlay_1.set_font_size(font_size)
-                self.overlay_2.set_font_size(font_size)
+                self.overlay.set_font_size(font_size)
 
-                font_color = s.get("font_color", "white")
-                self.overlay_1.set_font_color(font_color)
-                self.overlay_2.set_font_color(font_color)
+                font_color = s.get("font_color", "#FFFFFF")
+                self.overlay.set_font_color(font_color)
                 self.color_sample.setStyleSheet(f"background-color: {font_color}; border: 1px solid gray; border-radius: 4px;")
 
-                bg_color = s.get("bg_color", "#000000")
-                self.overlay_1.set_bg_color(bg_color)
-                self.overlay_2.set_bg_color(bg_color)
+                bg_color = s.get("bg_color", "#1F1F1F")
+                self.overlay.set_bg_color(bg_color)
                 self.bg_color_sample.setStyleSheet(f"background-color: {bg_color}; border: 1px solid gray; border-radius: 4px;")
 
-                bg_opacity = s.get("bg_opacity", 180)
+                bg_opacity = s.get("bg_opacity", 235)
                 self.bg_opacity_spin.setValue(bg_opacity)
-                self.overlay_1.set_bg_opacity(bg_opacity)
-                self.overlay_2.set_bg_opacity(bg_opacity)
+                self.overlay.set_bg_opacity(bg_opacity)
 
                 # Load DPI scale
                 dpi_scale = s.get("dpi_scale", DPI_SCALE_DEFAULT)
@@ -300,15 +269,9 @@ class ControlPanel(QWidget):
                 rect = s.get("capture_rect")
                 if rect:
                     self.worker.set_rect(QRect(rect[0], rect[1], rect[2], rect[3]))
-                    self.overlay_1.set_target_rect(self.worker.capture_rect)
+                    self.overlay.set_target_rect(self.worker.capture_rect)
                     self._main_capture_rect = QRect(self.worker.capture_rect)
 
-                rect_2 = s.get("capture_rect_2")
-                if rect_2:
-                    self.worker.set_rect_2(QRect(rect_2[0], rect_2[1], rect_2[2], rect_2[3]))
-                    self.overlay_2.set_target_rect(self.worker.capture_rect_2)
-                else:
-                    self.worker.set_rect_2(None)
                 self.update_rect_label()
 
                 # Load screenshot engine
@@ -450,21 +413,18 @@ class ControlPanel(QWidget):
         self.update_active_engines_label()
 
     def on_font_changed(self, font):
-        self.overlay_1.set_font_family(font.family())
-        self.overlay_2.set_font_family(font.family())
+        self.overlay.set_font_family(font.family())
         self.save_settings()
 
     def on_font_size_changed(self, size):
-        self.overlay_1.set_font_size(size)
-        self.overlay_2.set_font_size(size)
+        self.overlay.set_font_size(size)
         self.save_settings()
 
     def choose_color(self):
         color = QColorDialog.getColor()
         if color.isValid():
             color_name = color.name()
-            self.overlay_1.set_font_color(color_name)
-            self.overlay_2.set_font_color(color_name)
+            self.overlay.set_font_color(color_name)
             self.color_sample.setStyleSheet(f"background-color: {color_name}; border: 1px solid gray; border-radius: 4px;")
             self.save_settings()
 
@@ -472,8 +432,7 @@ class ControlPanel(QWidget):
         color = QColorDialog.getColor()
         if color.isValid():
             color_name = color.name()
-            self.overlay_1.set_bg_color(color_name)
-            self.overlay_2.set_bg_color(color_name)
+            self.overlay.set_bg_color(color_name)
             self.bg_color_sample.setStyleSheet(f"background-color: {color_name}; border: 1px solid gray; border-radius: 4px;")
             self.save_settings()
 
@@ -514,8 +473,7 @@ class ControlPanel(QWidget):
         self.worker.set_rect(rect)
         self._main_capture_rect = QRect(self.worker.capture_rect)
         self._main_dpi_scale = self.worker.dpi_scale
-        self.overlay_1.set_target_rect(rect)
-        self.overlay_1.label.setText(f"Region 1: {rect.x()},{rect.y()} {rect.width()}x{rect.height()}")
+        self.overlay.set_target_rect(rect)
         self.update_rect_label()
         self.save_settings()
 
@@ -530,8 +488,7 @@ class ControlPanel(QWidget):
         self.worker.set_rect(rect)
         self._temporary_region_active = True
         self._temporary_region_restore_timer.start(10_000)
-        self.overlay_1.set_target_rect(rect)
-        self.overlay_1.label.setText(f"Temporary Region: {rect.x()},{rect.y()} {rect.width()}x{rect.height()} (10s)")
+        self.overlay.set_target_rect(rect)
         self.update_rect_label()
 
     def _restore_main_region(self):
@@ -541,11 +498,7 @@ class ControlPanel(QWidget):
         self.worker.dpi_scale = self._main_dpi_scale
         self.worker.set_rect(self._main_capture_rect)
         self._temporary_region_active = False
-        self.overlay_1.set_target_rect(self._main_capture_rect)
-        self.overlay_1.label.setText(
-            f"Region: {self._main_capture_rect.x()},{self._main_capture_rect.y()} "
-            f"{self._main_capture_rect.width()}x{self._main_capture_rect.height()}"
-        )
+        self.overlay.set_target_rect(self._main_capture_rect)
         self.update_rect_label()
 
     def select_temporary_region(self):
@@ -558,54 +511,42 @@ class ControlPanel(QWidget):
         if rect:
             self._apply_temporary_region(rect, detected_dpi)
 
-    def select_region_1(self):
+    def select_fullscreen(self):
+        screen = QApplication.primaryScreen()
+        if screen:
+            geom = screen.geometry()
+            self._temporary_region_restore_timer.stop()
+            self._temporary_region_active = False
+            self._apply_main_region(geom, dpi_scale=1.0)
+            print(f"ControlPanel: Full Screen selected: {geom.width()}x{geom.height()}")
+
+    def select_region(self):
         rect, detected_dpi = self._get_selected_region_and_dpi()
         if rect:
             self._temporary_region_restore_timer.stop()
             self._temporary_region_active = False
             self._apply_main_region(rect, detected_dpi)
 
-    def select_region_2(self):
-        rect, detected_dpi = self._get_selected_region_and_dpi()
-        if rect:
-            self.worker.set_rect_2(rect)
-            self.overlay_2.set_target_rect(rect)
-            self.overlay_2.show()
-            self.overlay_2.label.setText(f"Region 2: {rect.x()},{rect.y()} {rect.width()}x{rect.height()}")
-            self.update_rect_label()
-            self.save_settings()
-
-    def clear_region_2(self):
-        self.worker.set_rect_2(None)
-        self.overlay_2.hide()
-        self.update_rect_label()
-        self.save_settings()
-
-    def select_region(self):
-        self.select_region_1()
+    def select_region_1(self):
+        self.select_region()
 
     def update_rect_label(self):
-        r1 = self.worker.capture_rect
-        r2 = self.worker.capture_rect_2
-        text1 = f"R1 (Dialog): {r1.x()},{r1.y()} {r1.width()}x{r1.height()}"
-        text2 = f" | R2 [F]: {r2.x()},{r2.y()} {r2.width()}x{r2.height()}" if r2 else " | R2 [F]: (None)"
-        self.rect_label_status.setText(text1 + text2)
+        r = self.worker.capture_rect
+        screen = QApplication.primaryScreen()
+        if screen and screen.geometry() == r:
+            self.rect_label_status.setText(f"Region: Full Screen ({r.width()}x{r.height()})")
+        else:
+            self.rect_label_status.setText(f"Region: {r.x()},{r.y()} {r.width()}x{r.height()}")
 
     def start(self):
-        self.overlay_1.set_mode(True)
-        self.overlay_1.set_target_rect(self.worker.capture_rect)
-        self.overlay_1.show()
-        if self.worker.capture_rect_2:
-            self.overlay_2.set_mode(True)
-            self.overlay_2.set_target_rect(self.worker.capture_rect_2)
-            self.overlay_2.show()
+        self.overlay.set_mode(True)
+        self.overlay.set_target_rect(self.worker.capture_rect)
         if not self.worker.isRunning():
             self.worker.start()
 
     def stop(self):
         self.worker.stop()
-        self.overlay_1.set_mode(False)
-        self.overlay_2.set_mode(False)
+        self.overlay.set_mode(False)
         self.perf_bar.setValue(0)
         self.perf_bar.setStyleSheet("")
 
@@ -613,8 +554,7 @@ class ControlPanel(QWidget):
         self._temporary_region_restore_timer.stop()
         self._temporary_region_hotkey.stop()
         self.worker.stop()
-        self.overlay_1.close()
-        self.overlay_2.close()
+        self.overlay.close()
         super().closeEvent(event)
  
     # ---------- API Key Helpers ----------
