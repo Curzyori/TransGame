@@ -123,7 +123,6 @@ class ControlPanel(QWidget):
         layout.addWidget(self.btn_stop)
 
         self.worker.new_translation_pills.connect(self.overlay.set_pills)
-        self.worker.new_translation.connect(self.overlay.update_lens_translation)
         self.worker.performance_update.connect(self.update_performance_bar)
         self.worker.running_status.connect(self.update_system_status)
         self.worker.translation_status.connect(self.update_translation_activity)

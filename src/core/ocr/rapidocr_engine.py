@@ -256,19 +256,34 @@ class RapidOCREngine(BaseOCREngine):
             if not raw_items:
                 return []
 
-            # Cluster lines that belong to the same dialogue block
+            # Cluster lines into blocks like Google Lens:
+            # Multi-line sentences merge together; standalone buttons/labels remain distinct
             clustered = []
             for rect, text in raw_items:
                 merged = False
-                for i, (b_rect, b_texts) in enumerate(clustered):
-                    v_dist = rect.top() - b_rect.bottom()
-                    h_overlap = min(rect.right(), b_rect.right()) - max(rect.left(), b_rect.left())
-                    if -5 <= v_dist <= 28 and (h_overlap > 0 or abs(rect.left() - b_rect.left()) < 120):
-                        new_rect = b_rect.united(rect)
-                        b_texts.append(text)
-                        clustered[i] = (new_rect, b_texts)
-                        merged = True
-                        break
+                words = text.split()
+                is_short_label = len(words) <= 3 and not text.endswith((".", "?", "!", "...", "…"))
+
+                if not is_short_label:
+                    for i, (b_rect, b_texts) in enumerate(clustered):
+                        b_last_text = b_texts[-1]
+                        # If previous line ends with terminal punctuation, don't merge next sentence into it
+                        if b_last_text.endswith((".", "?", "!")) and not b_last_text.endswith(("...", "…")):
+                            continue
+
+                        v_dist = rect.top() - b_rect.bottom()
+                        h_diff = abs(rect.height() - b_rect.height()) / max(rect.height(), b_rect.height())
+                        h_overlap = min(rect.right(), b_rect.right()) - max(rect.left(), b_rect.left())
+                        min_w = min(rect.width(), b_rect.width())
+
+                        # Merge if directly below (< 22px), similar height, and horizontally aligned
+                        if 0 <= v_dist <= 22 and h_diff <= 0.35 and (h_overlap > 0.4 * min_w or abs(rect.left() - b_rect.left()) < 40):
+                            new_rect = b_rect.united(rect)
+                            b_texts.append(text)
+                            clustered[i] = (new_rect, b_texts)
+                            merged = True
+                            break
+
                 if not merged:
                     clustered.append((rect, [text]))
 
