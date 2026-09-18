@@ -140,6 +140,7 @@ class ControlPanel(QWidget):
         self.update_active_engines_label()
         self._update_offline_model_status()
         self.refresh_preset_list()
+        self.update_system_status(False)
         self.show()
 
         # Ensure overlay canvas covers screen and passes all clicks through
