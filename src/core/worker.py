@@ -1,4 +1,5 @@
 import time
+import difflib
 import threading
 from threading import Lock
 from PySide6.QtCore import QThread, Signal, QRect
@@ -133,10 +134,21 @@ class OCRWorker(QThread):
                 clean = self.ocr_manager.read_text(IMG_PATH)
 
                 # 4. API (Async Translation)
-                if len(clean) > 2 and clean != self.last_text and not translating:
+                is_duplicate = False
+                if len(clean) > 2 and self.last_text:
+                    if clean == self.last_text:
+                        is_duplicate = True
+                    elif len(clean) > 8 and len(self.last_text) > 8:
+                        # Prevent duplicate requests from minor OCR character/space jitter
+                        if difflib.SequenceMatcher(None, clean, self.last_text).ratio() >= 0.88:
+                            is_duplicate = True
+
+                if len(clean) > 2 and not is_duplicate and not translating:
                     self.last_text = clean
                     threading.Thread(target=self._async_translate, args=(clean,), daemon=True).start()
                     print(f"[{current_engine}] Text: {clean} | Duration: {time.perf_counter()-start_total:.2f}s")
+                elif len(clean) <= 2:
+                    self.last_text = ""
 
                 # Emit performance data
                 self.performance_update.emit(time.perf_counter() - start_total)
