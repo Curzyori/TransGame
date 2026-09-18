@@ -178,6 +178,26 @@ def build_hotkey_tab(panel):
         temporary_region_tooltip,
     )
 
+    panel.peek_original_hotkey_button = HotkeyCaptureButton(panel.peek_original_hotkey)
+    panel.peek_original_hotkey_button.hotkeyChanged.connect(panel.on_peek_original_hotkey_changed)
+    _add_hotkey_row(
+        tab_settings_layout,
+        _("Peek original text key:"),
+        panel.peek_original_hotkey_button,
+        panel.reset_peek_original_hotkey,
+        _("Quickly hide or show the translation overlay to peek at the original game text."),
+    )
+
+    panel.freeze_translation_hotkey_button = HotkeyCaptureButton(panel.freeze_translation_hotkey)
+    panel.freeze_translation_hotkey_button.hotkeyChanged.connect(panel.on_freeze_translation_hotkey_changed)
+    _add_hotkey_row(
+        tab_settings_layout,
+        _("Freeze / Resume translation:"),
+        panel.freeze_translation_hotkey_button,
+        panel.reset_freeze_translation_hotkey,
+        _("Pause or resume live translation updates to read fast subtitles at your own pace."),
+    )
+
     hint = QLabel(_("Click a shortcut field, then press the key combination you want to use."))
     hint.setWordWrap(True)
     tab_settings_layout.addWidget(hint)

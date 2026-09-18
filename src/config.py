@@ -26,6 +26,9 @@ COMPOSITOR = get_compositor()
 
 DPI_SCALE_DEFAULT = 1.0  # Auto-detected from QScreen.devicePixelRatio, user can override
 
+PEEK_ORIGINAL_HOTKEY = "<ctrl>+<shift>+p"
+FREEZE_TRANSLATION_HOTKEY = "<ctrl>+<shift>+f"
+
 
 def get_language_code(display_name: str, fallback: str) -> str:
     language = LANGUAGES.get(display_name, {})

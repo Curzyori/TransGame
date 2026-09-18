@@ -7,7 +7,17 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushBu
 from src.core.worker import OCRWorker
 from src.ui.overlay_window import TransparentOverlay
 from src.core.sniper import SniperFactory
-from src.config import LANGUAGES, SETTINGS_FILE, PRESETS_FILE, DPI_SCALE_DEFAULT, SETTINGS_TOPMOST_HOTKEY, TEMPORARY_REGION_HOTKEY, get_language_code
+from src.config import (
+    LANGUAGES,
+    SETTINGS_FILE,
+    PRESETS_FILE,
+    DPI_SCALE_DEFAULT,
+    SETTINGS_TOPMOST_HOTKEY,
+    TEMPORARY_REGION_HOTKEY,
+    PEEK_ORIGINAL_HOTKEY,
+    FREEZE_TRANSLATION_HOTKEY,
+    get_language_code,
+)
 from src.core.shortcut import GlobalHotkey
 from src.i18n import _
 from src.ui.tabs import (
@@ -40,6 +50,8 @@ class ModelDownloadWorker(QThread):
 
 class ControlPanel(QWidget):
     temporary_region_hotkey_pressed = Signal()
+    peek_original_hotkey_pressed = Signal()
+    freeze_translation_hotkey_pressed = Signal()
 
     def __init__(self):
         super().__init__()
@@ -56,12 +68,30 @@ class ControlPanel(QWidget):
         self._temporary_region_hotkey_armed = True
         self.settings_topmost_hotkey = SETTINGS_TOPMOST_HOTKEY
         self.temporary_region_hotkey = TEMPORARY_REGION_HOTKEY
+        self.peek_original_hotkey = PEEK_ORIGINAL_HOTKEY
+        self.freeze_translation_hotkey = FREEZE_TRANSLATION_HOTKEY
+
         self._temporary_region_hotkey = GlobalHotkey(
             self.temporary_region_hotkey,
             self._emit_temporary_region_hotkey_pressed,
         )
         self.temporary_region_hotkey_pressed.connect(self._handle_temporary_region_hotkey_pressed)
         self._temporary_region_hotkey.start()
+
+        self._peek_original_hotkey = GlobalHotkey(
+            self.peek_original_hotkey,
+            self._emit_peek_original_hotkey_pressed,
+        )
+        self.peek_original_hotkey_pressed.connect(self.toggle_peek)
+        self._peek_original_hotkey.start()
+
+        self._freeze_translation_hotkey = GlobalHotkey(
+            self.freeze_translation_hotkey,
+            self._emit_freeze_translation_hotkey_pressed,
+        )
+        self.freeze_translation_hotkey_pressed.connect(self.toggle_freeze)
+        self._freeze_translation_hotkey.start()
+
         self.setWindowTitle("TransGame")
 
         # Set window icon
@@ -235,6 +265,8 @@ class ControlPanel(QWidget):
             "screenshot_engine": self.combo_screenshot.currentText(),
             "settings_topmost_hotkey": self.settings_topmost_hotkey,
             "temporary_region_hotkey": self.temporary_region_hotkey,
+            "peek_original_hotkey": self.peek_original_hotkey,
+            "freeze_translation_hotkey": self.freeze_translation_hotkey,
         }
         try:
             with open(SETTINGS_FILE, "wb") as f:
@@ -310,6 +342,8 @@ class ControlPanel(QWidget):
                 self._apply_saved_hotkeys(
                     s.get("settings_topmost_hotkey", SETTINGS_TOPMOST_HOTKEY),
                     s.get("temporary_region_hotkey", TEMPORARY_REGION_HOTKEY),
+                    s.get("peek_original_hotkey", PEEK_ORIGINAL_HOTKEY),
+                    s.get("freeze_translation_hotkey", FREEZE_TRANSLATION_HOTKEY),
                 )
 
                 self.update_languages()
@@ -317,14 +351,33 @@ class ControlPanel(QWidget):
                 return
             except Exception as e:
                 print(f"Settings load error: {e}")
-        
+
         # If file not exists or error occurs, set defaults
-        self._apply_saved_hotkeys(SETTINGS_TOPMOST_HOTKEY, TEMPORARY_REGION_HOTKEY)
+        self._apply_saved_hotkeys(
+            SETTINGS_TOPMOST_HOTKEY,
+            TEMPORARY_REGION_HOTKEY,
+            PEEK_ORIGINAL_HOTKEY,
+            FREEZE_TRANSLATION_HOTKEY,
+        )
         self.update_languages()
 
-    def _apply_saved_hotkeys(self, settings_topmost_hotkey, temporary_region_hotkey):
+    def _emit_peek_original_hotkey_pressed(self):
+        self.peek_original_hotkey_pressed.emit()
+
+    def _emit_freeze_translation_hotkey_pressed(self):
+        self.freeze_translation_hotkey_pressed.emit()
+
+    def _apply_saved_hotkeys(
+        self,
+        settings_topmost_hotkey,
+        temporary_region_hotkey,
+        peek_original_hotkey=None,
+        freeze_translation_hotkey=None,
+    ):
         self._set_settings_topmost_hotkey(settings_topmost_hotkey, save=False, show_error=False)
         self._set_temporary_region_hotkey(temporary_region_hotkey, save=False, show_error=False)
+        self._set_peek_original_hotkey(peek_original_hotkey or PEEK_ORIGINAL_HOTKEY, save=False, show_error=False)
+        self._set_freeze_translation_hotkey(freeze_translation_hotkey or FREEZE_TRANSLATION_HOTKEY, save=False, show_error=False)
         self._sync_hotkey_buttons()
 
     def _sync_hotkey_buttons(self):
@@ -332,6 +385,10 @@ class ControlPanel(QWidget):
             self.settings_topmost_hotkey_button.set_hotkey(self.settings_topmost_hotkey)
         if hasattr(self, "temporary_region_hotkey_button"):
             self.temporary_region_hotkey_button.set_hotkey(self.temporary_region_hotkey)
+        if hasattr(self, "peek_original_hotkey_button"):
+            self.peek_original_hotkey_button.set_hotkey(self.peek_original_hotkey)
+        if hasattr(self, "freeze_translation_hotkey_button"):
+            self.freeze_translation_hotkey_button.set_hotkey(self.freeze_translation_hotkey)
 
     def _set_settings_topmost_hotkey(self, hotkey, save=True, show_error=True):
         if self.overlay.set_settings_topmost_hotkey(hotkey):
@@ -365,6 +422,58 @@ class ControlPanel(QWidget):
             QMessageBox.warning(self, _("Invalid shortcut"), _("Could not register this shortcut. The previous shortcut is still active."))
         self._sync_hotkey_buttons()
         return False
+
+    def _set_peek_original_hotkey(self, hotkey, save=True, show_error=True):
+        if hotkey == self.peek_original_hotkey:
+            self._sync_hotkey_buttons()
+            return True
+
+        candidate = GlobalHotkey(hotkey, self._emit_peek_original_hotkey_pressed)
+        if candidate.start():
+            self._peek_original_hotkey.stop()
+            self._peek_original_hotkey = candidate
+            self.peek_original_hotkey = hotkey
+            self._sync_hotkey_buttons()
+            if save:
+                self.save_settings()
+            return True
+
+        if show_error:
+            QMessageBox.warning(self, _("Invalid shortcut"), _("Could not register this shortcut. The previous shortcut is still active."))
+        self._sync_hotkey_buttons()
+        return False
+
+    def on_peek_original_hotkey_changed(self, hotkey):
+        self._set_peek_original_hotkey(hotkey)
+
+    def reset_peek_original_hotkey(self):
+        self._set_peek_original_hotkey(PEEK_ORIGINAL_HOTKEY)
+
+    def _set_freeze_translation_hotkey(self, hotkey, save=True, show_error=True):
+        if hotkey == self.freeze_translation_hotkey:
+            self._sync_hotkey_buttons()
+            return True
+
+        candidate = GlobalHotkey(hotkey, self._emit_freeze_translation_hotkey_pressed)
+        if candidate.start():
+            self._freeze_translation_hotkey.stop()
+            self._freeze_translation_hotkey = candidate
+            self.freeze_translation_hotkey = hotkey
+            self._sync_hotkey_buttons()
+            if save:
+                self.save_settings()
+            return True
+
+        if show_error:
+            QMessageBox.warning(self, _("Invalid shortcut"), _("Could not register this shortcut. The previous shortcut is still active."))
+        self._sync_hotkey_buttons()
+        return False
+
+    def on_freeze_translation_hotkey_changed(self, hotkey):
+        self._set_freeze_translation_hotkey(hotkey)
+
+    def reset_freeze_translation_hotkey(self):
+        self._set_freeze_translation_hotkey(FREEZE_TRANSLATION_HOTKEY)
 
     def on_settings_topmost_hotkey_changed(self, hotkey):
         self._set_settings_topmost_hotkey(hotkey)
@@ -655,6 +764,8 @@ class ControlPanel(QWidget):
     def closeEvent(self, event):
         self._temporary_region_restore_timer.stop()
         self._temporary_region_hotkey.stop()
+        self._peek_original_hotkey.stop()
+        self._freeze_translation_hotkey.stop()
         self.worker.stop()
         self.overlay.close()
         super().closeEvent(event)
