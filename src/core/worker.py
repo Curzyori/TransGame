@@ -38,6 +38,7 @@ class OCRWorker(QThread):
 
         # Google Lens Phrase Translation Cache (phrase -> translation)
         self.translation_cache = {}
+        self.phrase_stability = {}
 
         # Subtitle stabilization state
         self.active_signature = ""
@@ -159,6 +160,8 @@ class OCRWorker(QThread):
 
             if valid_uncached:
                 raw_texts = [item[1] for item in valid_uncached]
+                trans_engine = self.translator_manager.current_translator_name
+                print(f"[Lens] Translating {len(valid_uncached)} phrase(s) via {trans_engine}: {raw_texts}")
                 translated_texts = self.translator_manager.translate_batch(raw_texts)
                 source, target = self.translator_manager.get_languages()
 
@@ -166,12 +169,13 @@ class OCRWorker(QThread):
                     orig = item[1]
                     if trans and not trans.startswith("Error:"):
                         self.translation_cache[orig] = trans
+                        print(f"  ✓ '{orig}' ➔ '{trans}'")
                         self.publisher.broadcast(
                             original=orig,
                             translated=trans,
                             source_lang=source,
                             target_lang=target,
-                            engine=self.translator_manager.current_translator_name,
+                            engine=trans_engine,
                         )
 
             # Build full list of pills for all visible blocks currently on screen
@@ -283,29 +287,32 @@ class OCRWorker(QThread):
 
                     # 2. Process uncached items if not currently translating
                     if uncached and not translating:
-                        # Check if any uncached item is an expanding typewriter dialogue
-                        has_growing_dialogue = False
-                        for _, text, _ in uncached:
-                            words = text.split()
-                            if len(words) > 3:
-                                # Multi-word dialogue: typewriter debounce
-                                if self.candidate_signature != text:
-                                    self.candidate_signature = text
-                                    self.candidate_first_seen = now
-                                    self.candidate_last_changed = now
-                                    has_growing_dialogue = True
-                                else:
-                                    time_stable = now - self.candidate_last_changed
-                                    total_wait = now - self.candidate_first_seen
-                                    if time_stable < self.STABILITY_COOLDOWN and total_wait < self.MAX_ACCUMULATION_TIME:
-                                        has_growing_dialogue = True
+                        current_uncached_texts = {text for _, text, _ in uncached}
+                        self.phrase_stability = {
+                            k: v for k, v in self.phrase_stability.items() if k in current_uncached_texts
+                        }
 
-                        if not has_growing_dialogue:
-                            self.candidate_signature = ""
-                            self.candidate_first_seen = 0.0
+                        items_to_translate = []
+                        for item in uncached:
+                            box, text, colors = item
+                            words = text.split()
+                            # Short labels/buttons (<=3 words) are translated immediately
+                            if len(words) <= 3:
+                                items_to_translate.append(item)
+                            else:
+                                # Multi-word dialogue: wait 0.5s stability (avoids typewriter flicker)
+                                if text not in self.phrase_stability:
+                                    self.phrase_stability[text] = now
+                                else:
+                                    if (now - self.phrase_stability[text]) >= 0.5:
+                                        items_to_translate.append(item)
+
+                        if items_to_translate:
+                            for item in items_to_translate:
+                                self.phrase_stability.pop(item[1], None)
                             threading.Thread(
                                 target=self._async_translate_blocks,
-                                args=(list(abs_blocks), list(uncached)),
+                                args=(list(abs_blocks), list(items_to_translate)),
                                 daemon=True,
                             ).start()
 

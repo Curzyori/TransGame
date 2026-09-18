@@ -230,7 +230,7 @@ class PortalScreenshot(BaseScreenshot):
         select_token = f"select_{token}"
         await self._call_portal_request("SelectSources", "oa{sv}", [self._session_handle, {
             "handle_token": Variant("s", select_token),
-            "types": Variant("u", 1),  # 1 = Monitor only (guarantees 1:1 coordinates alignment with desktop overlay)
+            "types": Variant("u", 3),  # 3 = Monitor or Window (User can freely select Monitor or specific Window)
             "multiple": Variant("b", False),
             "cursor_mode": Variant("u", 2),
         }], select_token)

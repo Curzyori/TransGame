@@ -9,7 +9,7 @@ def is_translatable_text(text: str) -> bool:
     if not text:
         return False
     s = text.strip()
-    if len(s) < 3:
+    if len(s) < 2:
         return False
 
     # 1. Reject if pure numbers or numbers with signs (e.g. "100", "0", "-5", "3.14")
@@ -40,7 +40,7 @@ def is_translatable_text(text: str) -> bool:
 
     # 7. Check alphabetic content ratio
     alpha_chars = [c for c in s if c.isalpha()]
-    if len(alpha_chars) < 3:
+    if len(alpha_chars) < 2:
         return False
 
     non_space_chars = [c for c in s if not c.isspace()]
