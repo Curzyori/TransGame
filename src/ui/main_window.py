@@ -363,21 +363,52 @@ class ControlPanel(QWidget):
             self.system_indicator.setStyleSheet(
                 "background-color: #2E7D32; border-radius: 8px;"
             )
-            self.system_status_label.setText("Running")
+            self.system_status_label.setText(_("Running"))
+            self.btn_start.setEnabled(False)
+            self.btn_start.setStyleSheet("background-color: #37474F; color: #78909C; font-weight: bold; padding: 10px; border-radius: 4px;")
+            self.btn_stop.setEnabled(True)
+            self.btn_stop.setStyleSheet("background-color: #C62828; color: white; font-weight: bold; padding: 10px; border-radius: 4px;")
         else:
             self.system_indicator.setStyleSheet(
                 "background-color: #C62828; border-radius: 8px;"
             )
-            self.system_status_label.setText("Stopped")
+            self.system_status_label.setText(_("Stopped"))
+            self.btn_start.setEnabled(True)
+            self.btn_start.setStyleSheet("background-color: #2E7D32; color: white; font-weight: bold; padding: 10px; border-radius: 4px;")
+            self.btn_stop.setEnabled(False)
+            self.btn_stop.setStyleSheet("background-color: #37474F; color: #78909C; font-weight: bold; padding: 10px; border-radius: 4px;")
             self.overlay.set_mode(False)
             self.perf_bar.setValue(0)
             self.perf_bar.setStyleSheet("")
 
-    def update_rect_label(self):
+    def update_area_mode_ui(self):
         r = self.worker.capture_rect
-        self.rect_label_status.setText(
-            _("Region: X:{x} Y:{y}  {w}×{h}").format(x=r.x(), y=r.y(), w=r.width(), h=r.height())
-        )
+        screen = QApplication.primaryScreen()
+        is_fullscreen = bool(screen and screen.geometry() == r)
+
+        if is_fullscreen:
+            self.btn_fullscreen.setStyleSheet(
+                "background-color: #00897B; color: white; font-weight: bold; padding: 10px; "
+                "border: 2px solid #80CBC4; border-radius: 4px;"
+            )
+            self.btn_reg.setStyleSheet(
+                "background-color: #263238; color: #90A4AE; font-weight: bold; padding: 10px; "
+                "border: 1px solid #37474F; border-radius: 4px;"
+            )
+            self.rect_label_status.setText(f"Region: Full Screen ({r.width()}x{r.height()})")
+        else:
+            self.btn_fullscreen.setStyleSheet(
+                "background-color: #263238; color: #90A4AE; font-weight: bold; padding: 10px; "
+                "border: 1px solid #37474F; border-radius: 4px;"
+            )
+            self.btn_reg.setStyleSheet(
+                "background-color: #1565C0; color: white; font-weight: bold; padding: 10px; "
+                "border: 2px solid #90CAF9; border-radius: 4px;"
+            )
+            self.rect_label_status.setText(f"Region: {r.x()},{r.y()} {r.width()}x{r.height()}")
+
+    def update_rect_label(self):
+        self.update_area_mode_ui()
 
     def update_performance_bar(self, duration):
         # Inverse logic: 0.5s -> %100 (Best), 3.0s -> %0 (Worst)
@@ -534,13 +565,19 @@ class ControlPanel(QWidget):
     def select_region_1(self):
         self.select_region()
 
-    def update_rect_label(self):
-        r = self.worker.capture_rect
-        screen = QApplication.primaryScreen()
-        if screen and screen.geometry() == r:
-            self.rect_label_status.setText(f"Region: Full Screen ({r.width()}x{r.height()})")
-        else:
-            self.rect_label_status.setText(f"Region: {r.x()},{r.y()} {r.width()}x{r.height()}")
+    def apply_google_lens_theme(self):
+        """Reset overlay font and colors to Google Lens dark pill defaults."""
+        self.font_picker.setCurrentFont("Arial")
+        self.overlay.set_font_family("Arial")
+        self.font_size_spin.setValue(18)
+        self.overlay.set_font_size(18)
+        self.overlay.set_font_color("#FFFFFF")
+        self.color_sample.setStyleSheet("background-color: #FFFFFF; border: 1px solid gray; border-radius: 4px;")
+        self.overlay.set_bg_color("#1F1F1F")
+        self.bg_color_sample.setStyleSheet("background-color: #1F1F1F; border: 1px solid gray; border-radius: 4px;")
+        self.bg_opacity_spin.setValue(240)
+        self.overlay.set_bg_opacity(240)
+        self.save_settings()
 
     def start(self):
         screen = QApplication.primaryScreen()

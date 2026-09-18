@@ -53,5 +53,13 @@ def build_appearance_tab(panel):
     panel.bg_opacity_spin.valueChanged.connect(panel.on_bg_opacity_changed)
     h_bg_opacity.addWidget(panel.bg_opacity_spin)
     tab_appearance_layout.addLayout(h_bg_opacity)
+
+    panel.btn_lens_theme = QPushButton(_("✨ Reset to Google Lens Theme"))
+    panel.btn_lens_theme.setStyleSheet(
+        "background-color: #212121; color: #FFFFFF; font-weight: bold; padding: 8px; border: 1px solid #424242; border-radius: 4px;"
+    )
+    panel.btn_lens_theme.clicked.connect(panel.apply_google_lens_theme)
+    tab_appearance_layout.addWidget(panel.btn_lens_theme)
+
     tab_appearance_layout.addStretch()
     return tab_appearance
