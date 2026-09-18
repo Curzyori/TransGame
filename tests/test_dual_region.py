@@ -16,13 +16,14 @@ class LensWorkerTests(unittest.TestCase):
     def test_worker_signals_and_stabilization_state(self):
         worker = OCRWorker()
         self.assertTrue(hasattr(worker, "new_translation"))
+        self.assertTrue(hasattr(worker, "new_translation_pills"))
         self.assertTrue(hasattr(worker, "performance_update"))
         self.assertTrue(hasattr(worker, "translation_status"))
         self.assertTrue(hasattr(worker, "running_status"))
 
         # Check stabilization thresholds
-        self.assertEqual(worker.STABILITY_COOLDOWN, 1.5)
-        self.assertEqual(worker.MAX_ACCUMULATION_TIME, 3.2)
+        self.assertEqual(worker.STABILITY_COOLDOWN, 2.0)
+        self.assertEqual(worker.MAX_ACCUMULATION_TIME, 3.5)
         self.assertEqual(worker.displayed_text, "")
         self.assertEqual(worker.candidate_text, "")
 

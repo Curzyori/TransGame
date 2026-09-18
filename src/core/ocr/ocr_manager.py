@@ -34,3 +34,13 @@ class OCRManager:
         if engine:
             return engine.read_text(image_path), None
         return "", None
+
+    def extract_text_blocks(self, image_path: str):
+        engine = self.engines.get(self.current_engine_name)
+        if engine and hasattr(engine, "extract_text_blocks"):
+            return engine.extract_text_blocks(image_path)
+        if engine:
+            text = engine.read_text(image_path)
+            if text:
+                return [(None, text)]
+        return []

@@ -1,6 +1,7 @@
 import glob
 import os
 
+from PySide6.QtCore import QRect
 from src.core.ocr.base_ocr import BaseOCREngine
 from src.config import OCR_LANG_MAPPING
 
@@ -197,26 +198,29 @@ class RapidOCREngine(BaseOCREngine):
 
         return lines
 
-    def read_dialogue_with_box(self, image_path: str):
+    def extract_text_blocks(self, image_path: str):
         """
-        Extracts translatable dialogue lines along with their unified bounding box (x, y, w, h).
-        Filters out non-translatable text (ping, numbers, telemetry, single keys, etc.).
+        Extracts translatable text blocks from the image.
+        Lines that are vertically close (<28px) and horizontally overlapping/aligned are
+        clustered into a single dialogue block (e.g. multi-line dialogue).
+        Distant text lines (like action prompts or menu buttons) remain separate blocks.
+        Returns: list of (QRect, text)
         """
         if not self._initialize():
-            return "", None
+            return []
 
         try:
             result = self.ocr(image_path)
             if not result:
-                return "", None
+                return []
             if isinstance(result, tuple):
                 result = result[0]
             if hasattr(result, "result"):
                 result = result.result
 
-            valid_lines = []
-            boxes = []
+            from src.core.translation.text_cleaner import is_translatable_text
 
+            raw_items = []
             for item in result or []:
                 text = ""
                 box = None
@@ -235,35 +239,51 @@ class RapidOCREngine(BaseOCREngine):
                         text = item[1][0].strip() if item[1] else ""
                         conf = float(item[1][1]) if len(item[1]) > 1 else 1.0
 
-                if text and conf > 0.2:
-                    from src.core.translation.text_cleaner import is_translatable_text
-                    if is_translatable_text(text):
-                        valid_lines.append(text)
-                        if box:
-                            try:
-                                xs = [p[0] for p in box]
-                                ys = [p[1] for p in box]
-                                boxes.append((min(xs), min(ys), max(xs), max(ys)))
-                            except Exception:
-                                pass
+                if text and conf > 0.2 and is_translatable_text(text) and box:
+                    try:
+                        xs = [p[0] for p in box]
+                        ys = [p[1] for p in box]
+                        rect = QRect(
+                            int(min(xs)),
+                            int(min(ys)),
+                            max(10, int(max(xs) - min(xs))),
+                            max(10, int(max(ys) - min(ys))),
+                        )
+                        raw_items.append((rect, text))
+                    except Exception:
+                        pass
 
-            if not valid_lines:
-                return "", None
+            if not raw_items:
+                return []
 
-            if boxes:
-                u_x1 = int(min(b[0] for b in boxes))
-                u_y1 = int(min(b[1] for b in boxes))
-                u_x2 = int(max(b[2] for b in boxes))
-                u_y2 = int(max(b[3] for b in boxes))
-                union_box = (u_x1, u_y1, max(10, u_x2 - u_x1), max(10, u_y2 - u_y1))
-            else:
-                union_box = None
+            # Cluster lines that belong to the same dialogue block
+            clustered = []
+            for rect, text in raw_items:
+                merged = False
+                for i, (b_rect, b_texts) in enumerate(clustered):
+                    v_dist = rect.top() - b_rect.bottom()
+                    h_overlap = min(rect.right(), b_rect.right()) - max(rect.left(), b_rect.left())
+                    if -5 <= v_dist <= 28 and (h_overlap > 0 or abs(rect.left() - b_rect.left()) < 120):
+                        new_rect = b_rect.united(rect)
+                        b_texts.append(text)
+                        clustered[i] = (new_rect, b_texts)
+                        merged = True
+                        break
+                if not merged:
+                    clustered.append((rect, [text]))
 
-            full_text = " ".join(valid_lines)
-            return full_text.strip(), union_box
+            return [(r, " ".join(t)) for r, t in clustered if t]
         except Exception as e:
-            print(f"RapidOCR read_dialogue_with_box Error: {e}")
+            print(f"RapidOCR extract_text_blocks Error: {e}")
+            return []
+
+    def read_dialogue_with_box(self, image_path: str):
+        blocks = self.extract_text_blocks(image_path)
+        if not blocks:
             return "", None
+        full_text = " ".join(t for _, t in blocks)
+        first_box = (blocks[0][0].x(), blocks[0][0].y(), blocks[0][0].width(), blocks[0][0].height())
+        return full_text.strip(), first_box
 
     def read_text(self, image_path: str) -> str:
         text, _ = self.read_dialogue_with_box(image_path)

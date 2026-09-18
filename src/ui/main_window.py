@@ -122,6 +122,7 @@ class ControlPanel(QWidget):
         self.btn_stop.clicked.connect(self.stop)
         layout.addWidget(self.btn_stop)
 
+        self.worker.new_translation_pills.connect(self.overlay.set_pills)
         self.worker.new_translation.connect(self.overlay.update_lens_translation)
         self.worker.performance_update.connect(self.update_performance_bar)
         self.worker.running_status.connect(self.update_system_status)
@@ -142,12 +143,15 @@ class ControlPanel(QWidget):
         self.refresh_preset_list()
         self.show()
 
-        # Position overlay directly over the capture region
+        # Ensure overlay canvas covers screen and passes all clicks through
         QTimer.singleShot(100, self.align_overlay)
 
     def align_overlay(self):
-        """Positions the overlay window directly over the capture region."""
-        self.overlay.set_target_rect(self.worker.capture_rect)
+        """Positions the transparent click-through overlay canvas over the display."""
+        screen = QApplication.primaryScreen()
+        if screen:
+            self.overlay.setGeometry(screen.geometry())
+            self.overlay.set_target_rect(self.worker.capture_rect)
 
     @Slot(bool)
     def set_settings_always_on_top(self, enabled):
@@ -539,14 +543,18 @@ class ControlPanel(QWidget):
             self.rect_label_status.setText(f"Region: {r.x()},{r.y()} {r.width()}x{r.height()}")
 
     def start(self):
+        screen = QApplication.primaryScreen()
+        if screen:
+            self.overlay.setGeometry(screen.geometry())
+            self.overlay.set_target_rect(self.worker.capture_rect)
         self.overlay.set_mode(True)
-        self.overlay.set_target_rect(self.worker.capture_rect)
         if not self.worker.isRunning():
             self.worker.start()
 
     def stop(self):
         self.worker.stop()
         self.overlay.set_mode(False)
+        self.overlay.set_pills([])
         self.perf_bar.setValue(0)
         self.perf_bar.setStyleSheet("")
 

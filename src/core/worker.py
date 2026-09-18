@@ -13,9 +13,10 @@ from src.config import IMG_PATH, DPI_SCALE_DEFAULT
 
 class OCRWorker(QThread):
     LOOP_SLEEP_SECONDS = 0.35
-    STABILITY_COOLDOWN = 1.5
-    MAX_ACCUMULATION_TIME = 3.2
+    STABILITY_COOLDOWN = 2.0
+    MAX_ACCUMULATION_TIME = 3.5
 
+    new_translation_pills = Signal(object)  # List[Tuple[QRect, str]]
     new_translation = Signal(str, object)  # (translated_text, target_rect_or_None)
     performance_update = Signal(float)     # Loop duration in seconds
     translation_status = Signal(bool)      # True: translating, False: idle
@@ -35,8 +36,11 @@ class OCRWorker(QThread):
         self.publisher = TranslationPublisher()
 
         # Subtitle stabilization state
+        self.active_signature = ""
         self.displayed_text = ""
+        self.candidate_signature = ""
         self.candidate_text = ""
+        self.candidate_blocks = []
         self.candidate_box = None
         self.candidate_first_seen = 0.0
         self.candidate_last_changed = 0.0
@@ -47,7 +51,9 @@ class OCRWorker(QThread):
             self.capture_rect = QRect(qrect)
             if dpi_scale is not None:
                 self.dpi_scale = dpi_scale
+            self.active_signature = ""
             self.displayed_text = ""
+            self.candidate_signature = ""
             self.candidate_text = ""
             print(f"OCRWorker: Region: {qrect.x()},{qrect.y()} {qrect.width()}x{qrect.height()} DPI: {self.dpi_scale}")
 
@@ -98,29 +104,41 @@ class OCRWorker(QThread):
         self.publisher.stop()
         self.running_status.emit(False)
 
-    def _async_translate(self, text: str, target_box: QRect):
+    def _async_translate_blocks(self, blocks: list):
         with self._translation_lock:
             self._is_translating = True
         self.translation_status.emit(True)
         try:
-            cleaned = clean_ocr_text(text)
-            translated = self.translator_manager.translate(cleaned)
-            self.new_translation.emit(translated, target_box)
-
+            translated_pills = []
             source, target = self.translator_manager.get_languages()
-            self.publisher.broadcast(
-                original=cleaned,
-                translated=translated,
-                source_lang=source,
-                target_lang=target,
-                engine=self.translator_manager.current_translator_name,
-            )
+
+            for box, text in blocks:
+                cleaned = clean_ocr_text(text)
+                if not cleaned:
+                    continue
+                translated = self.translator_manager.translate(cleaned)
+                translated_pills.append((box, translated))
+
+                self.publisher.broadcast(
+                    original=cleaned,
+                    translated=translated,
+                    source_lang=source,
+                    target_lang=target,
+                    engine=self.translator_manager.current_translator_name,
+                )
+
+            self.new_translation_pills.emit(translated_pills)
+            if translated_pills:
+                self.new_translation.emit(translated_pills[0][1], translated_pills[0][0])
         except Exception as e:
             print(f"Translation Error: {e}")
         finally:
             with self._translation_lock:
                 self._is_translating = False
             self.translation_status.emit(False)
+
+    def _async_translate(self, text: str, target_box: QRect):
+        self._async_translate_blocks([(target_box, text)])
 
     def run(self):
         self.publisher.start()
@@ -149,76 +167,83 @@ class OCRWorker(QThread):
                 if current_engine == "Tesseract":
                     ImageProcessor.preprocess_for_tesseract(IMG_PATH, IMG_PATH)
 
-                # Extract dialogue and union bounding box
-                clean, rel_box = self.ocr_manager.read_dialogue_with_box(IMG_PATH)
+                # Extract translatable text blocks with individual bounding boxes
+                raw_blocks = self.ocr_manager.extract_text_blocks(IMG_PATH)
 
-                # Convert relative box to absolute screen coordinates
-                if rel_box:
-                    abs_box = QRect(
-                        rect.x() + rel_box[0],
-                        rect.y() + rel_box[1],
-                        rel_box[2],
-                        rel_box[3],
-                    )
-                else:
-                    abs_box = QRect(rect)
+                abs_blocks = []
+                for b_box, b_text in raw_blocks:
+                    if b_box:
+                        abs_box = QRect(
+                            rect.x() + b_box.x(),
+                            rect.y() + b_box.y(),
+                            b_box.width(),
+                            b_box.height(),
+                        )
+                    else:
+                        abs_box = QRect(rect)
+                    abs_blocks.append((abs_box, b_text))
 
+                detected_signature = " | ".join(t for _, t in abs_blocks)
                 now = time.time()
 
-                if not clean or len(clean) < 3:
+                if not detected_signature or len(detected_signature) < 3:
                     # Dialogue empty / absent
                     self.empty_frames_count += 1
-                    if self.empty_frames_count >= 3:
-                        if self.displayed_text != "":
+                    if self.empty_frames_count >= 4:
+                        if self.active_signature != "":
+                            self.active_signature = ""
                             self.displayed_text = ""
+                            self.candidate_signature = ""
                             self.candidate_text = ""
+                            self.new_translation_pills.emit([])
                             self.new_translation.emit("", None)
                 else:
                     self.empty_frames_count = 0
 
                     # Check if it matches currently displayed text (jitter tolerance)
-                    is_same_as_displayed = False
-                    if self.displayed_text:
-                        if clean == self.displayed_text:
-                            is_same_as_displayed = True
-                        elif len(clean) > 8 and len(self.displayed_text) > 8:
-                            if difflib.SequenceMatcher(None, clean, self.displayed_text).ratio() >= 0.88:
-                                is_same_as_displayed = True
+                    is_same_as_active = False
+                    if self.active_signature:
+                        if detected_signature == self.active_signature:
+                            is_same_as_active = True
+                        elif len(detected_signature) > 8 and len(self.active_signature) > 8:
+                            if difflib.SequenceMatcher(None, detected_signature, self.active_signature).ratio() >= 0.88:
+                                is_same_as_active = True
 
-                    if is_same_as_displayed:
-                        # Dialogue is still actively displayed on screen.
-                        # Reset candidate and hold current translation.
+                    if is_same_as_active:
+                        # Current dialogue is still actively on screen! Hold it.
+                        self.candidate_signature = ""
                         self.candidate_text = ""
                         self.candidate_first_seen = 0.0
                     else:
-                        # New dialogue is streaming in!
-                        if not self.candidate_text:
+                        # New or typewriter dialogue streaming in!
+                        if not self.candidate_signature:
                             self.candidate_first_seen = now
-                            self.candidate_text = clean
-                            self.candidate_box = abs_box
+                            self.candidate_signature = detected_signature
+                            self.candidate_blocks = abs_blocks
                             self.candidate_last_changed = now
-                        elif clean != self.candidate_text:
-                            self.candidate_text = clean
-                            self.candidate_box = abs_box
+                        elif detected_signature != self.candidate_signature:
+                            self.candidate_signature = detected_signature
+                            self.candidate_blocks = abs_blocks
                             self.candidate_last_changed = now
 
                         time_stable = now - self.candidate_last_changed
                         total_wait = now - self.candidate_first_seen
 
-                        # Stabilized condition: text stopped changing for STABILITY_COOLDOWN or reached MAX_ACCUMULATION
+                        # Stabilized condition: text stopped growing/changing for STABILITY_COOLDOWN or reached MAX_ACCUMULATION
                         if (time_stable >= self.STABILITY_COOLDOWN or total_wait >= self.MAX_ACCUMULATION_TIME) and not translating:
-                            self.displayed_text = self.candidate_text
-                            target_box = self.candidate_box or abs_box
-                            text_to_translate = self.candidate_text
+                            self.active_signature = self.candidate_signature
+                            self.displayed_text = self.candidate_signature
+                            blocks_to_translate = list(self.candidate_blocks)
+                            self.candidate_signature = ""
                             self.candidate_text = ""
                             self.candidate_first_seen = 0.0
 
                             threading.Thread(
-                                target=self._async_translate,
-                                args=(text_to_translate, target_box),
+                                target=self._async_translate_blocks,
+                                args=(blocks_to_translate,),
                                 daemon=True,
                             ).start()
-                            print(f"[{current_engine}] Stabilized dialogue: {text_to_translate}")
+                            print(f"[{current_engine}] Stabilized dialogue: {self.active_signature}")
 
                 self.performance_update.emit(time.perf_counter() - start_total)
 
