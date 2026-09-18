@@ -38,5 +38,27 @@ class PhraseCacheTests(unittest.TestCase):
         self.assertEqual(len(self.worker.translation_cache), 0)
 
 
+    def test_worker_freeze_toggle(self):
+        self.assertFalse(self.worker.is_frozen)
+        self.worker.set_frozen(True)
+        self.assertTrue(self.worker.is_frozen)
+        self.worker.set_frozen(False)
+        self.assertFalse(self.worker.is_frozen)
+
+    def test_sample_box_colors_contrast(self):
+        from PIL import Image
+        from src.core.ocr.rapidocr_engine import RapidOCREngine
+
+        # Test dark background -> white text
+        dark_img = Image.new("RGB", (100, 100), color=(20, 20, 20))
+        bg, fg = RapidOCREngine._sample_box_colors(dark_img, QRect(10, 10, 50, 20))
+        self.assertEqual(fg, "#FFFFFF")
+
+        # Test light background -> dark text
+        light_img = Image.new("RGB", (100, 100), color=(240, 240, 240))
+        bg, fg = RapidOCREngine._sample_box_colors(light_img, QRect(10, 10, 50, 20))
+        self.assertEqual(fg, "#111111")
+
+
 if __name__ == "__main__":
     unittest.main()

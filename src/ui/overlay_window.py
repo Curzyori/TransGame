@@ -32,10 +32,12 @@ class TransparentOverlay(QWidget):
         self.font_color = "#FFFFFF"
         self.bg_color = "#1F1F1F"
         self.bg_opacity = 240
+        self.adaptive_colors = True
         self._is_scanning = False
+        self._is_peeking = False
 
-        # Active translated pills: list of (QRect, translated_text)
-        self.pills: List[Tuple[QRect, str]] = []
+        # Active translated pills: list of (QRect, translated_text, optional_colors)
+        self.pills: list = []
         self.target_rect: Optional[QRect] = None
 
         self._main_window_topmost_requested = False
@@ -77,16 +79,30 @@ class TransparentOverlay(QWidget):
             self.target_rect = QRect(rect)
             self.setGeometry(rect)
 
-    def set_pills(self, pills: List[Tuple[QRect, str]]):
+    def set_pills(self, pills: list):
         """
         Updates the active Google Lens translation pills and re-renders them in-place.
+        Tolerates 2-tuples (rect, text) and 3-tuples (rect, text, colors).
         Tolerates empty list to clear the overlay.
         """
-        self.pills = [(QRect(r), str(txt)) for r, txt in pills if txt and txt.strip()]
+        parsed = []
+        for item in pills:
+            if not item:
+                continue
+            if len(item) == 2:
+                r, txt = item
+                if txt and str(txt).strip():
+                    parsed.append((QRect(r), str(txt), None))
+            elif len(item) >= 3:
+                r, txt, colors = item[0], item[1], item[2]
+                if txt and str(txt).strip():
+                    parsed.append((QRect(r), str(txt), colors))
+        self.pills = parsed
         self.update()
         if self.pills:
-            self.show()
-            self.raise_()
+            if not self._is_peeking:
+                self.show()
+                self.raise_()
         else:
             self.hide()
 
@@ -125,13 +141,32 @@ class TransparentOverlay(QWidget):
         offset_x = self.x()
         offset_y = self.y()
 
-        for rect, text in self.pills:
+        for item in self.pills:
+            rect = item[0]
+            text = item[1]
+            colors = item[2] if len(item) > 2 else None
             if not text:
                 continue
 
             # Convert global screen coords to local widget coords
             local_x = rect.x() - offset_x
             local_y = rect.y() - offset_y
+
+            # Check for adaptive colors (Google Lens AR Inpainting)
+            if self.adaptive_colors and colors and len(colors) == 2:
+                try:
+                    bg_hex, fg_hex = colors
+                    r_c = int(bg_hex[1:3], 16)
+                    g_c = int(bg_hex[3:5], 16)
+                    b_c = int(bg_hex[5:7], 16)
+                    pill_brush = QColor(r_c, g_c, b_c, self.bg_opacity)
+                    pill_text_color = QColor(fg_hex)
+                except Exception:
+                    pill_brush = brush
+                    pill_text_color = text_color
+            else:
+                pill_brush = brush
+                pill_text_color = text_color
 
             # Dynamically size font proportional to original bounding box height (like Google Lens)
             f_size = max(11, min(self.font_size, int(rect.height() * 0.72)))
@@ -162,11 +197,11 @@ class TransparentOverlay(QWidget):
                     int(pill_w),
                     int(pill_h)
                 )
-                painter.setBrush(brush)
+                painter.setBrush(pill_brush)
                 painter.setPen(border_pen)
                 painter.drawRoundedRect(pill_rect, 6, 6)
 
-                painter.setPen(text_color)
+                painter.setPen(pill_text_color)
                 painter.drawText(pill_rect, Qt.AlignCenter | Qt.TextWordWrap, text)
             else:
                 pill_w = max(rect.width() + pad_x * 2, text_w + pad_x * 2)
@@ -177,12 +212,17 @@ class TransparentOverlay(QWidget):
                     int(pill_w),
                     int(pill_h)
                 )
-                painter.setBrush(brush)
+                painter.setBrush(pill_brush)
                 painter.setPen(border_pen)
                 painter.drawRoundedRect(pill_rect, 6, 6)
 
-                painter.setPen(text_color)
+                painter.setPen(pill_text_color)
                 painter.drawText(pill_rect, Qt.AlignCenter | Qt.TextWordWrap, text)
+
+    @Slot(bool)
+    def set_adaptive_colors(self, enabled: bool):
+        self.adaptive_colors = enabled
+        self.update()
 
     @Slot(str)
     def set_font_family(self, family):

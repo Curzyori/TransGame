@@ -112,6 +112,18 @@ class ControlPanel(QWidget):
         h_reg.addWidget(self.btn_reg)
         layout.addLayout(h_reg)
 
+        h_lens = QHBoxLayout()
+        self.btn_peek = QPushButton(_("👁 Peek Original"))
+        self.btn_peek.setStyleSheet("background-color: #37474F; color: white; font-weight: bold; padding: 8px; border-radius: 4px;")
+        self.btn_peek.clicked.connect(self.toggle_peek)
+        h_lens.addWidget(self.btn_peek)
+
+        self.btn_freeze = QPushButton(_("⏸ Freeze Translation"))
+        self.btn_freeze.setStyleSheet("background-color: #455A64; color: white; font-weight: bold; padding: 8px; border-radius: 4px;")
+        self.btn_freeze.clicked.connect(self.toggle_freeze)
+        h_lens.addWidget(self.btn_freeze)
+        layout.addLayout(h_lens)
+
         self.btn_start = QPushButton(_("▶ Start"))
         self.btn_start.setStyleSheet("background-color: #2E7D32; color: white; font-weight: bold; padding: 10px;")
         self.btn_start.clicked.connect(self.start)
@@ -215,6 +227,7 @@ class ControlPanel(QWidget):
             "font_color": self.overlay.font_color,
             "bg_color": self.overlay.bg_color,
             "bg_opacity": self.overlay.bg_opacity,
+            "adaptive_colors": self.overlay.adaptive_colors,
             "translator_api_keys": self.api_keys,
             "capture_rect": (self.worker.capture_rect.x(), self.worker.capture_rect.y(),
                             self.worker.capture_rect.width(), self.worker.capture_rect.height()),
@@ -261,6 +274,13 @@ class ControlPanel(QWidget):
                 bg_opacity = s.get("bg_opacity", 235)
                 self.bg_opacity_spin.setValue(bg_opacity)
                 self.overlay.set_bg_opacity(bg_opacity)
+
+                adaptive_colors = s.get("adaptive_colors", True)
+                self.overlay.set_adaptive_colors(adaptive_colors)
+                if hasattr(self, "chk_adaptive_color"):
+                    self.chk_adaptive_color.blockSignals(True)
+                    self.chk_adaptive_color.setChecked(adaptive_colors)
+                    self.chk_adaptive_color.blockSignals(False)
 
                 # Load DPI scale
                 dpi_scale = s.get("dpi_scale", DPI_SCALE_DEFAULT)
@@ -579,6 +599,36 @@ class ControlPanel(QWidget):
         self.overlay.set_bg_opacity(240)
         self.save_settings()
 
+    def toggle_peek(self):
+        """Hides or reveals the translation overlay to peek at original game text (Google Lens style)."""
+        self._is_peeking = not getattr(self, "_is_peeking", False)
+        self.overlay._is_peeking = self._is_peeking
+        if self._is_peeking:
+            self.overlay.hide()
+            self.btn_peek.setText(_("👁 Show Translation"))
+            self.btn_peek.setStyleSheet("background-color: #E65100; color: white; font-weight: bold; padding: 8px; border-radius: 4px;")
+        else:
+            if self.overlay.pills and self.worker.isRunning():
+                self.overlay.show()
+                self.overlay.raise_()
+            self.btn_peek.setText(_("👁 Peek Original"))
+            self.btn_peek.setStyleSheet("background-color: #37474F; color: white; font-weight: bold; padding: 8px; border-radius: 4px;")
+
+    def toggle_freeze(self):
+        """Pauses/resumes the live OCR translation loop (Google Lens camera freeze style)."""
+        frozen = not self.worker.is_frozen
+        self.worker.set_frozen(frozen)
+        if frozen:
+            self.btn_freeze.setText(_("▶ Resume Translation"))
+            self.btn_freeze.setStyleSheet("background-color: #E65100; color: white; font-weight: bold; padding: 8px; border-radius: 4px;")
+        else:
+            self.btn_freeze.setText(_("⏸ Freeze Translation"))
+            self.btn_freeze.setStyleSheet("background-color: #455A64; color: white; font-weight: bold; padding: 8px; border-radius: 4px;")
+
+    def on_adaptive_color_toggled(self, checked: bool):
+        self.overlay.set_adaptive_colors(checked)
+        self.save_settings()
+
     def start(self):
         screen = QApplication.primaryScreen()
         if screen:
@@ -590,6 +640,13 @@ class ControlPanel(QWidget):
 
     def stop(self):
         self.worker.stop()
+        self.worker.set_frozen(False)
+        self._is_peeking = False
+        self.overlay._is_peeking = False
+        self.btn_peek.setText(_("👁 Peek Original"))
+        self.btn_peek.setStyleSheet("background-color: #37474F; color: white; font-weight: bold; padding: 8px; border-radius: 4px;")
+        self.btn_freeze.setText(_("⏸ Freeze Translation"))
+        self.btn_freeze.setStyleSheet("background-color: #455A64; color: white; font-weight: bold; padding: 8px; border-radius: 4px;")
         self.overlay.set_mode(False)
         self.overlay.set_pills([])
         self.perf_bar.setValue(0)

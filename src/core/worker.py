@@ -33,6 +33,7 @@ class OCRWorker(QThread):
         self.screenshot_engine = ScreenshotFactory.get_engine()
         self._translation_lock = Lock()
         self._is_translating = False
+        self.is_frozen = False
         self.publisher = TranslationPublisher()
 
         # Google Lens Phrase Translation Cache (phrase -> translation)
@@ -48,6 +49,9 @@ class OCRWorker(QThread):
         self.candidate_first_seen = 0.0
         self.candidate_last_changed = 0.0
         self.empty_frames_count = 0
+
+    def set_frozen(self, frozen: bool):
+        self.is_frozen = bool(frozen)
 
     def _lookup_cache(self, text: str):
         if not text:
@@ -144,18 +148,27 @@ class OCRWorker(QThread):
             self._is_translating = True
         self.translation_status.emit(True)
         try:
-            valid_uncached = [(box, clean_ocr_text(text)) for box, text in uncached_blocks if text and clean_ocr_text(text)]
+            valid_uncached = []
+            for item in uncached_blocks:
+                box = item[0]
+                text = item[1]
+                colors = item[2] if len(item) > 2 else None
+                clean_t = clean_ocr_text(text)
+                if clean_t:
+                    valid_uncached.append((box, clean_t, colors))
+
             if valid_uncached:
-                raw_texts = [t for _, t in valid_uncached]
+                raw_texts = [item[1] for item in valid_uncached]
                 translated_texts = self.translator_manager.translate_batch(raw_texts)
                 source, target = self.translator_manager.get_languages()
 
-                for (box, orig), translated in zip(valid_uncached, translated_texts):
-                    if translated and not translated.startswith("Error:"):
-                        self.translation_cache[orig] = translated
+                for item, trans in zip(valid_uncached, translated_texts):
+                    orig = item[1]
+                    if trans and not trans.startswith("Error:"):
+                        self.translation_cache[orig] = trans
                         self.publisher.broadcast(
                             original=orig,
-                            translated=translated,
+                            translated=trans,
                             source_lang=source,
                             target_lang=target,
                             engine=self.translator_manager.current_translator_name,
@@ -163,10 +176,13 @@ class OCRWorker(QThread):
 
             # Build full list of pills for all visible blocks currently on screen
             all_pills = []
-            for box, text in current_screen_blocks:
+            for item in current_screen_blocks:
+                box = item[0]
+                text = item[1]
+                colors = item[2] if len(item) > 2 else None
                 cached = self._lookup_cache(text)
                 if cached:
-                    all_pills.append((box, cached))
+                    all_pills.append((box, cached, colors))
 
             self.new_translation_pills.emit(all_pills)
             if all_pills:
@@ -189,6 +205,10 @@ class OCRWorker(QThread):
 
         while self.running:
             try:
+                if self.is_frozen:
+                    time.sleep(self.LOOP_SLEEP_SECONDS)
+                    continue
+
                 start_total = time.perf_counter()
                 with self.lock:
                     rect = QRect(self.capture_rect)
@@ -212,7 +232,10 @@ class OCRWorker(QThread):
                 raw_blocks = self.ocr_manager.extract_text_blocks(IMG_PATH)
 
                 abs_blocks = []
-                for b_box, b_text in raw_blocks:
+                for item in raw_blocks:
+                    b_box = item[0]
+                    b_text = item[1]
+                    b_colors = item[2] if len(item) > 2 else None
                     cleaned_t = clean_ocr_text(b_text)
                     if not is_translatable_text(cleaned_t):
                         continue
@@ -225,7 +248,7 @@ class OCRWorker(QThread):
                         )
                     else:
                         abs_box = QRect(rect)
-                    abs_blocks.append((abs_box, cleaned_t))
+                    abs_blocks.append((abs_box, cleaned_t, b_colors))
 
                 now = time.time()
 
@@ -246,12 +269,12 @@ class OCRWorker(QThread):
                     # Google Lens Phrase Translation Cache matching
                     current_cached_pills = []
                     uncached = []
-                    for box, text in abs_blocks:
+                    for box, text, colors in abs_blocks:
                         cached_translation = self._lookup_cache(text)
                         if cached_translation:
-                            current_cached_pills.append((box, cached_translation))
+                            current_cached_pills.append((box, cached_translation, colors))
                         else:
-                            uncached.append((box, text))
+                            uncached.append((box, text, colors))
 
                     # 1. Instantly render all cached pills on screen (0ms latency, zero flicker)
                     if current_cached_pills:
@@ -262,7 +285,7 @@ class OCRWorker(QThread):
                     if uncached and not translating:
                         # Check if any uncached item is an expanding typewriter dialogue
                         has_growing_dialogue = False
-                        for _, text in uncached:
+                        for _, text, _ in uncached:
                             words = text.split()
                             if len(words) > 3:
                                 # Multi-word dialogue: typewriter debounce

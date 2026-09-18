@@ -1,4 +1,13 @@
-from PySide6.QtWidgets import QFontComboBox, QHBoxLayout, QLabel, QPushButton, QSpinBox, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QFontComboBox,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
+)
 
 from src.i18n import _
 
@@ -53,6 +62,11 @@ def build_appearance_tab(panel):
     panel.bg_opacity_spin.valueChanged.connect(panel.on_bg_opacity_changed)
     h_bg_opacity.addWidget(panel.bg_opacity_spin)
     tab_appearance_layout.addLayout(h_bg_opacity)
+
+    panel.chk_adaptive_color = QCheckBox(_("🎨 Adaptive Color Inpainting (Google Lens AR)"))
+    panel.chk_adaptive_color.setChecked(getattr(panel.overlay, "adaptive_colors", True))
+    panel.chk_adaptive_color.toggled.connect(panel.on_adaptive_color_toggled)
+    tab_appearance_layout.addWidget(panel.chk_adaptive_color)
 
     panel.btn_lens_theme = QPushButton(_("✨ Reset to Google Lens Theme"))
     panel.btn_lens_theme.setStyleSheet(

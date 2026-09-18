@@ -287,16 +287,63 @@ class RapidOCREngine(BaseOCREngine):
                 if not merged:
                     clustered.append((rect, [text]))
 
-            return [(r, " ".join(t)) for r, t in clustered if t]
+            from PIL import Image
+            pil_img = None
+            try:
+                pil_img = Image.open(image_path).convert("RGB")
+            except Exception:
+                pass
+
+            result_blocks = []
+            for r, t in clustered:
+                if t:
+                    colors = self._sample_box_colors(pil_img, r) if pil_img else ("#1F1F1F", "#FFFFFF")
+                    result_blocks.append((r, " ".join(t), colors))
+
+            return result_blocks
         except Exception as e:
             print(f"RapidOCR extract_text_blocks Error: {e}")
             return []
+
+    @staticmethod
+    def _sample_box_colors(pil_image, rect: QRect) -> tuple[str, str]:
+        if not pil_image:
+            return ("#1F1F1F", "#FFFFFF")
+        w, h = pil_image.size
+        x1 = max(0, min(w - 1, rect.x()))
+        y1 = max(0, min(h - 1, rect.y()))
+        x2 = max(0, min(w - 1, rect.right()))
+        y2 = max(0, min(h - 1, rect.bottom()))
+        points = [
+            (x1, y1), (x2, y1),
+            (x1, y2), (x2, y2),
+            (x1, (y1 + y2) // 2), (x2, (y1 + y2) // 2),
+            ((x1 + x2) // 2, y1), ((x1 + x2) // 2, y2),
+        ]
+        colors = []
+        for px, py in points:
+            try:
+                colors.append(pil_image.getpixel((px, py)))
+            except Exception:
+                pass
+
+        if not colors:
+            return ("#1F1F1F", "#FFFFFF")
+
+        r_avg = int(sum(c[0] for c in colors) / len(colors))
+        g_avg = int(sum(c[1] for c in colors) / len(colors))
+        b_avg = int(sum(c[2] for c in colors) / len(colors))
+        bg_hex = f"#{r_avg:02X}{g_avg:02X}{b_avg:02X}"
+
+        luminance = 0.299 * r_avg + 0.587 * g_avg + 0.114 * b_avg
+        fg_hex = "#111111" if luminance > 145 else "#FFFFFF"
+        return (bg_hex, fg_hex)
 
     def read_dialogue_with_box(self, image_path: str):
         blocks = self.extract_text_blocks(image_path)
         if not blocks:
             return "", None
-        full_text = " ".join(t for _, t in blocks)
+        full_text = " ".join(b[1] for b in blocks)
         first_box = (blocks[0][0].x(), blocks[0][0].y(), blocks[0][0].width(), blocks[0][0].height())
         return full_text.strip(), first_box
 
