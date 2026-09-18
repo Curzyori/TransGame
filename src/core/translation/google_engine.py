@@ -56,3 +56,17 @@ class GoogleEngine(BaseTranslator):
             except Exception as gtx_err:
                 print(f"Google Translation Error (deep_translator: {e}, gtx: {gtx_err})")
                 return f"Error: {e}"
+
+    def translate_batch(self, texts: list[str]) -> list[str]:
+        if not texts:
+            return []
+        joined = "\n".join(t.strip() for t in texts)
+        try:
+            translated_joined = self._translate_gtx(joined)
+            results = translated_joined.split("\n")
+            if len(results) == len(texts):
+                return [r.strip() for r in results]
+        except Exception as e:
+            print(f"GoogleEngine batch translation error: {e}")
+
+        return [self.translate(t) for t in texts]

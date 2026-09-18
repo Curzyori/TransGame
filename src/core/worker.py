@@ -109,23 +109,27 @@ class OCRWorker(QThread):
             self._is_translating = True
         self.translation_status.emit(True)
         try:
+            valid_blocks = [(box, clean_ocr_text(text)) for box, text in blocks if text and clean_ocr_text(text)]
+            if not valid_blocks:
+                self.new_translation_pills.emit([])
+                return
+
+            raw_texts = [t for _, t in valid_blocks]
+            translated_texts = self.translator_manager.translate_batch(raw_texts)
+
             translated_pills = []
             source, target = self.translator_manager.get_languages()
 
-            for box, text in blocks:
-                cleaned = clean_ocr_text(text)
-                if not cleaned:
-                    continue
-                translated = self.translator_manager.translate(cleaned)
-                translated_pills.append((box, translated))
-
-                self.publisher.broadcast(
-                    original=cleaned,
-                    translated=translated,
-                    source_lang=source,
-                    target_lang=target,
-                    engine=self.translator_manager.current_translator_name,
-                )
+            for (box, orig), translated in zip(valid_blocks, translated_texts):
+                if translated and not translated.startswith("Error:"):
+                    translated_pills.append((box, translated))
+                    self.publisher.broadcast(
+                        original=orig,
+                        translated=translated,
+                        source_lang=source,
+                        target_lang=target,
+                        engine=self.translator_manager.current_translator_name,
+                    )
 
             self.new_translation_pills.emit(translated_pills)
             if translated_pills:

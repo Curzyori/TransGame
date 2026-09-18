@@ -52,3 +52,16 @@ class HybridEngine(BaseTranslator):
 
         # If both fail, return best-effort
         return self.google.translate(normalized)
+
+    def translate_batch(self, texts: list[str]) -> list[str]:
+        if not texts:
+            return []
+        cleaned_list = [clean_ocr_text(t) for t in texts]
+        try:
+            results = self.google.translate_batch(cleaned_list)
+            if results and len(results) == len(texts) and not any(r.startswith("Error:") for r in results):
+                return results
+        except Exception as e:
+            logger.warning("HybridEngine batch translation failed: %s, falling back to item translation", e)
+
+        return [self.translate(t) for t in texts]

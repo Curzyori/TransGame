@@ -19,6 +19,12 @@ class HybridEngineTests(unittest.TestCase):
                 self.assertEqual(res, "Halo dunia (offline)")
                 mock_argos.assert_called_once()
 
+    def test_hybrid_translate_batch(self):
+        engine = HybridEngine(source="en", target="id")
+        with mock.patch.object(engine.google, "translate_batch", return_value=["TOKO", "MAINKAN"]):
+            res = engine.translate_batch(["STORE", "PLAY"])
+            self.assertEqual(res, ["TOKO", "MAINKAN"])
+
 
 if __name__ == "__main__":
     unittest.main()

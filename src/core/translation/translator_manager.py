@@ -38,3 +38,9 @@ class TranslatorManager:
         if translator:
             return translator.translate(text)
         return text
+
+    def translate_batch(self, texts: list[str]) -> list[str]:
+        translator = self.translators.get(self.current_translator_name)
+        if translator and hasattr(translator, "translate_batch"):
+            return translator.translate_batch(texts)
+        return [self.translate(t) for t in texts]

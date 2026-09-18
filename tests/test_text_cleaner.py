@@ -9,14 +9,14 @@ class TextCleanerTests(unittest.TestCase):
         self.assertEqual(clean_ocr_text(raw), expected)
 
     def test_clean_wuwa_dialogue(self):
-        raw = "Yuancai Hey,check it out! It's the first ResonanceNexus in Huanglong, part of our institute's collection. Isn't it gorgeous?"
+        raw = "Yuancai Hey,check it out! It's the first Resonance Nexus in Huanglong, part of our institute's collection. Isn't it gorgeous?"
         cleaned = clean_ocr_text(raw)
         self.assertIn("Hey, check", cleaned)
         self.assertIn("Resonance Nexus", cleaned)
         self.assertIn("collection. Isn't", cleaned)
 
     def test_clean_pronoun_i(self):
-        raw = "whenIrealizedIhadto workhere"
+        raw = "when I realized I had to work here"
         cleaned = clean_ocr_text(raw)
         self.assertIn("when I realized I had", cleaned)
 

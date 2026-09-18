@@ -1,6 +1,6 @@
 from typing import List, Optional, Tuple
 from PySide6.QtCore import QPoint, QRect, Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 from src.config import SETTINGS_TOPMOST_HOTKEY
 from src.core.shortcut import GlobalHotkey
@@ -132,17 +132,57 @@ class TransparentOverlay(QWidget):
             # Convert global screen coords to local widget coords
             local_x = rect.x() - offset_x
             local_y = rect.y() - offset_y
-            local_rect = QRect(local_x, local_y, rect.width(), rect.height())
 
-            # Background pill covering the original foreign text completely
-            pill_rect = local_rect.adjusted(-8, -4, 8, 4)
-            painter.setBrush(brush)
-            painter.setPen(border_pen)
-            painter.drawRoundedRect(pill_rect, 8, 8)
+            # Dynamically size font proportional to original bounding box height (like Google Lens)
+            f_size = max(11, min(self.font_size, int(rect.height() * 0.72)))
+            font = QFont(self.font_family, f_size, QFont.Bold)
+            painter.setFont(font)
+            metrics = QFontMetrics(font)
 
-            # Translated text on top
-            painter.setPen(text_color)
-            painter.drawText(local_rect, Qt.AlignCenter | Qt.TextWordWrap, text)
+            text_w = metrics.horizontalAdvance(text)
+            text_h = metrics.height()
+            pad_x = 10
+            pad_y = 5
+
+            center_x = local_x + rect.width() / 2.0
+            center_y = local_y + rect.height() / 2.0
+            max_w = min(750, self.width() - 40) if self.width() > 100 else 750
+
+            if text_w + pad_x * 2 > max_w:
+                pill_w = max_w
+                bounding = metrics.boundingRect(
+                    QRect(0, 0, int(pill_w - pad_x * 2), 1000),
+                    Qt.AlignCenter | Qt.TextWordWrap,
+                    text
+                )
+                pill_h = max(rect.height() + pad_y * 2, bounding.height() + pad_y * 2)
+                pill_rect = QRect(
+                    int(center_x - pill_w / 2.0),
+                    int(center_y - pill_h / 2.0),
+                    int(pill_w),
+                    int(pill_h)
+                )
+                painter.setBrush(brush)
+                painter.setPen(border_pen)
+                painter.drawRoundedRect(pill_rect, 6, 6)
+
+                painter.setPen(text_color)
+                painter.drawText(pill_rect, Qt.AlignCenter | Qt.TextWordWrap, text)
+            else:
+                pill_w = max(rect.width() + pad_x * 2, text_w + pad_x * 2)
+                pill_h = max(rect.height() + pad_y * 2, text_h + pad_y * 2)
+                pill_rect = QRect(
+                    int(center_x - pill_w / 2.0),
+                    int(center_y - pill_h / 2.0),
+                    int(pill_w),
+                    int(pill_h)
+                )
+                painter.setBrush(brush)
+                painter.setPen(border_pen)
+                painter.drawRoundedRect(pill_rect, 6, 6)
+
+                painter.setPen(text_color)
+                painter.drawText(pill_rect, Qt.AlignCenter, text)
 
     @Slot(str)
     def set_font_family(self, family):

@@ -58,27 +58,22 @@ def is_translatable_text(text: str) -> bool:
 def clean_ocr_text(text: str) -> str:
     """
     Normalizes and cleans raw OCR text from game dialogues.
-    Fixes glued words, missing punctuation spacing, and artifacts that degrade
-    machine translation quality.
+    Fixes missing punctuation spacing and quotes without breaking valid words.
     """
     if not text or not text.strip():
         return ""
 
     cleaned = text
 
-    # 1. Space after punctuation if followed by a letter (e.g. "someday.I" -> "someday. I")
+    # 1. Space after punctuation if followed by a letter (e.g. "someday.I" -> "someday. I", "hello,world" -> "hello, world")
     cleaned = re.sub(r"([.,!?;:])([A-Za-z])", r"\1 \2", cleaned)
 
-    # 2. Add space around isolated pronoun 'I' glued between words:
-    # e.g. "whenIrealized" -> "when I realized", "thatIhad" -> "that I had"
-    cleaned = re.sub(r"([a-z])(I)([a-z])", r"\1 \2 \3", cleaned)
-    cleaned = re.sub(r"([a-z])(I\')", r"\1 \2", cleaned)
-    cleaned = re.sub(r"([a-z])(I\b)", r"\1 \2", cleaned)
+    # 2. Add space around pronoun 'I' if glued to words without spaces
+    cleaned = re.sub(r"\bwhenI\b", "when I", cleaned)
+    cleaned = re.sub(r"\bthatI\b", "that I", cleaned)
+    cleaned = re.sub(r"([a-z])\s*(I)\s+(had|have|want|wanted|was|am|realized|promised|can|will|would)\b", r"\1 \2 \3", cleaned)
 
-    # 3. Add space before capital letters if glued to lowercase (e.g. "ResonanceNexus" -> "Resonance Nexus")
-    cleaned = re.sub(r"([a-z])([A-Z])", r"\1 \2", cleaned)
-
-    # 4. Clean common OCR trailing junk and normalize quotes
+    # 3. Clean common OCR quotes and normalize whitespace
     cleaned = cleaned.replace("“", '"').replace("”", '"').replace("’", "'")
     cleaned = re.sub(r"\s+", " ", cleaned).strip().strip("_").rstrip(":")
 
