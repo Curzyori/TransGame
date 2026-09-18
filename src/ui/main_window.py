@@ -3,7 +3,7 @@ import pickle
 import os
 from PySide6.QtCore import Qt, QRect, QPoint, QTimer, Signal, Slot, QThread
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QApplication, QColorDialog, QProgressBar, QTabWidget, QMessageBox
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QApplication, QColorDialog, QProgressBar, QTabWidget, QMessageBox
 from src.core.worker import OCRWorker
 from src.ui.overlay_window import TransparentOverlay
 from src.core.sniper import SniperFactory
