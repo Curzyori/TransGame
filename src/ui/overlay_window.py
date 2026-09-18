@@ -78,9 +78,9 @@ class TransparentOverlay(QWidget):
     main_window_topmost_requested = Signal(bool)
     settings_topmost_hotkey_pressed = Signal()
 
-    def __init__(self):
+    def __init__(self, title="USTA_TRANSLATION_OVERLAY", enable_hotkey=True):
         super().__init__()
-        self.setWindowTitle("USTA_TRANSLATION_OVERLAY")
+        self.setWindowTitle(title)
         self.setWindowFlags(Qt.WindowStaysOnTopHint |
                             Qt.FramelessWindowHint |
                             Qt.WindowDoesNotAcceptFocus |
@@ -91,10 +91,10 @@ class TransparentOverlay(QWidget):
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.setMouseTracking(True)
         self.resize(800, 200)
-        
+
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
-        
+
         # Style variables
         self.font_family = "Arial"
         self.font_size = 20
@@ -102,7 +102,8 @@ class TransparentOverlay(QWidget):
         self.bg_color = "#000000"
         self.bg_opacity = 180
         self._show_corner_lines = False
-        
+        self._is_scanning = False
+
         self.label = CornerLabel(self)
         self.label.setText("Translation will appear here.")
         self.label.setAttribute(Qt.WA_TransparentForMouseEvents)
@@ -114,16 +115,18 @@ class TransparentOverlay(QWidget):
         self._main_window_topmost_requested = False
         self._settings_topmost_hotkey_armed = True
         self.settings_topmost_hotkey = SETTINGS_TOPMOST_HOTKEY
-        self._settings_topmost_hotkey = GlobalHotkey(
-            self.settings_topmost_hotkey,
-            self._emit_settings_topmost_hotkey_pressed,
-        )
-        self.settings_topmost_hotkey_pressed.connect(self._handle_settings_topmost_hotkey_pressed)
-        self._settings_topmost_hotkey.start()
-        
+        self._settings_topmost_hotkey = None
+        if enable_hotkey:
+            self._settings_topmost_hotkey = GlobalHotkey(
+                self.settings_topmost_hotkey,
+                self._emit_settings_topmost_hotkey_pressed,
+            )
+            self.settings_topmost_hotkey_pressed.connect(self._handle_settings_topmost_hotkey_pressed)
+            self._settings_topmost_hotkey.start()
+
         self.hide_timer = QTimer(self)
         self.hide_timer.setSingleShot(True)
-        self.hide_timer.timeout.connect(lambda: self.label.setText(""))
+        self.hide_timer.timeout.connect(self._on_hide_timer_timeout)
 
         self.set_mode(False)
         self.timer = QTimer(self)
@@ -154,15 +157,27 @@ class TransparentOverlay(QWidget):
         r = int(self.bg_color[1:3], 16)
         g = int(self.bg_color[3:5], 16)
         b = int(self.bg_color[5:7], 16)
+        has_text = bool(self.label.text().strip())
+        current_opacity = self.bg_opacity if has_text else 0
         style = (
             f"color: {self.font_color}; "
             f"font-family: '{self.font_family}'; "
             f"font-size: {self.font_size}px; "
             f"font-weight: bold; "
-            f"background: rgba({r},{g},{b},{self.bg_opacity}); border-radius: 6px; padding: 10px;"
+            f"background: rgba({r},{g},{b},{current_opacity}); border-radius: 6px; padding: 6px 10px;"
         )
         self.label.setStyleSheet(style)
         self.label.update()
+
+    def _on_hide_timer_timeout(self):
+        self.label.setText("")
+        self.update_style()
+
+    def set_target_rect(self, rect):
+        """Aligns the overlay window geometry directly over the selected capture region."""
+        if rect and rect.width() > 10 and rect.height() > 10:
+            self.setGeometry(rect)
+            self.update_style()
 
     def enterEvent(self, event):
         self._show_corner_lines = True
@@ -201,15 +216,22 @@ class TransparentOverlay(QWidget):
 
     @Slot(str)
     def update_text(self, text):
-        self.label.setText(text)
-        self.raise_()
-        self.hide_timer.start(10000)
+        clean = (text or "").strip()
+        self.label.setText(clean)
+        self.update_style()
+        if clean:
+            self.raise_()
+            self.hide_timer.start(5000)
+        else:
+            self.hide_timer.stop()
 
     def _toggle_main_window_topmost(self):
         self._main_window_topmost_requested = not self._main_window_topmost_requested
         self.main_window_topmost_requested.emit(self._main_window_topmost_requested)
 
     def set_settings_topmost_hotkey(self, hotkey):
+        if not self._settings_topmost_hotkey:
+            return False
         if hotkey == self.settings_topmost_hotkey:
             return True
 
@@ -223,17 +245,21 @@ class TransparentOverlay(QWidget):
         return True
 
     def closeEvent(self, event):
-        self._settings_topmost_hotkey.stop()
+        if self._settings_topmost_hotkey:
+            self._settings_topmost_hotkey.stop()
         super().closeEvent(event)
 
     def set_mode(self, scan):
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+        self._is_scanning = scan
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, scan)
         self.setCursor(Qt.ArrowCursor if scan else Qt.SizeAllCursor)
         if scan:
-            self.hide_timer.start(10000)
+            self.label.setText("")
+            self.update_style()
         else:
             self.hide_timer.stop()
             self.label.setText(_("Translation will appear here."))
+            self.update_style()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:

@@ -9,13 +9,12 @@ By "sniping" a specific area of your screen, USTA continuously monitors that reg
 
 ## 🚀 Key Features
 
-*   **Real-Time HUD Translation:** Specifically designed to provide live translations over video players and game windows.
-*   **KDE & Wayland Support:** Currently runs in `xcb` mode, specifically tailored for KDE Plasma environments using native tools for region selection and capture.
-*   **Sniper Mode Overlay:** Modular region selection system to target subtitle areas.
-*   **Modular OCR Engine Subsystem:** Dynamic multi-backend support (Tesseract & EasyOCR) for accurate text extraction.
-*   **Multi-Engine Translation Subsystem:** Real-time translations via Google Translate, DeepL, and **100% Offline Argos Translate** (CTranslate2/OpenNMT, zero rate limits, zero GPU usage).
-*   **Unix Socket IPC Broadcasting:** Real-time JSON broadcast of every translation to a local Unix socket, enabling integration with other tools (e.g., custom subtitles, logging, or OBS).
-*   **Global Shortcuts & IPC Integration:** Utilizes a lightweight single-instance architecture to handle background processes and external CLI-driven shortcuts.
+*   **Google Lens-Style In-Place Overlay:** Automatically positions subtitle boxes right over the original dialogue text on screen, covering the foreign text with smooth semi-transparent background pills and rendering translated text cleanly.
+*   **Dual-Region Simultaneous Translation:** Designed for games (e.g., Wuthering Waves, Genshin) to simultaneously capture and translate both **Region 1 (Dialogue subtitles at bottom)** and **Region 2 (Interactive action choices like [F] prompts at middle-right)** from a single zero-overhead frame!
+*   **Hybrid Translation Engine:** Combines high-accuracy Google Neural Machine Translation (with automatic OCR spacing normalizer) and **100% Offline Argos Translate** (CTranslate2) fallback, ensuring zero rate limits and top translation quality.
+*   **KDE & Wayland Support:** Runs in `xcb` mode, specifically tailored for KDE Plasma and GNOME Wayland environments.
+*   **Modular OCR Engine Subsystem:** Dynamic multi-backend support (RapidOCR ONNX, Tesseract, EasyOCR).
+*   **Unix Socket IPC Broadcasting:** Real-time JSON broadcast of every translation to `/tmp/usta.sock`.
 
 ## 📡 External Integration (IPC)
 

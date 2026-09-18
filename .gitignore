@@ -78,3 +78,4 @@ target/
 graphify-out/
 .graphify-out/
 c.md
+.example/

@@ -1,17 +1,19 @@
 from src.core.translation.google_engine import GoogleEngine
 from src.core.translation.deepl_engine import DeepLTranslatorEngine
 from src.core.translation.argos_engine import ArgosEngine
+from src.core.translation.hybrid_engine import HybridEngine
 
 class TranslatorManager:
     def __init__(self):
         self.translators = {
+            "Hybrid (Auto)": HybridEngine(),
             "Google": GoogleEngine(),
             "DeepL": DeepLTranslatorEngine(),
             "Argos (Offline)": ArgosEngine(),
         }
-        self.current_translator_name = "Google"
+        self.current_translator_name = "Hybrid (Auto)"
         self._source_lang = "en"
-        self._target_lang = "tr"
+        self._target_lang = "id"
 
     def set_translator(self, name: str):
         if name in self.translators:
