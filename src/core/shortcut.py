@@ -70,9 +70,10 @@ class GlobalHotkey:
             return
 
         try:
-            self._listener.stop()
-        except Exception:
-            logger.exception("Failed to stop global hotkey listener for %s", self.hotkey)
+            if hasattr(self._listener, "is_alive") and self._listener.is_alive():
+                self._listener.stop()
+        except Exception as exc:
+            logger.debug("Failed to cleanly stop global hotkey listener for %s: %s", self.hotkey, exc)
         finally:
             self._listener = None
             self._hotkey = None
