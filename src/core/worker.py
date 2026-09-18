@@ -287,34 +287,11 @@ class OCRWorker(QThread):
 
                     # 2. Process uncached items if not currently translating
                     if uncached and not translating:
-                        current_uncached_texts = {text for _, text, _ in uncached}
-                        self.phrase_stability = {
-                            k: v for k, v in self.phrase_stability.items() if k in current_uncached_texts
-                        }
-
-                        items_to_translate = []
-                        for item in uncached:
-                            box, text, colors = item
-                            words = text.split()
-                            # Short labels/buttons (<=3 words) are translated immediately
-                            if len(words) <= 3:
-                                items_to_translate.append(item)
-                            else:
-                                # Multi-word dialogue: wait 0.5s stability (avoids typewriter flicker)
-                                if text not in self.phrase_stability:
-                                    self.phrase_stability[text] = now
-                                else:
-                                    if (now - self.phrase_stability[text]) >= 0.5:
-                                        items_to_translate.append(item)
-
-                        if items_to_translate:
-                            for item in items_to_translate:
-                                self.phrase_stability.pop(item[1], None)
-                            threading.Thread(
-                                target=self._async_translate_blocks,
-                                args=(list(abs_blocks), list(items_to_translate)),
-                                daemon=True,
-                            ).start()
+                        threading.Thread(
+                            target=self._async_translate_blocks,
+                            args=(list(abs_blocks), list(uncached)),
+                            daemon=True,
+                        ).start()
 
                 self.performance_update.emit(time.perf_counter() - start_total)
 

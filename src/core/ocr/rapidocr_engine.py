@@ -134,7 +134,7 @@ class RapidOCREngine(BaseOCREngine):
                 use_text_det=True,
                 use_angle_cls=False,
                 det_model_path="",
-                det_limit_side_len=320,
+                det_limit_side_len=960,
                 rec_model_path=rec_model_path,
                 rec_batch_num=1,
             )
@@ -218,7 +218,7 @@ class RapidOCREngine(BaseOCREngine):
             if hasattr(result, "result"):
                 result = result.result
 
-            from src.core.translation.text_cleaner import is_translatable_text
+            from src.core.translation.text_cleaner import is_translatable_text, clean_ocr_text
 
             raw_items = []
             for item in result or []:
@@ -239,7 +239,7 @@ class RapidOCREngine(BaseOCREngine):
                         text = item[1][0].strip() if item[1] else ""
                         conf = float(item[1][1]) if len(item[1]) > 1 else 1.0
 
-                if text and conf > 0.2 and is_translatable_text(text) and box:
+                if text and conf > 0.2 and box and any(c.isalpha() for c in text):
                     try:
                         xs = [p[0] for p in box]
                         ys = [p[1] for p in box]
@@ -297,8 +297,10 @@ class RapidOCREngine(BaseOCREngine):
             result_blocks = []
             for r, t in clustered:
                 if t:
-                    colors = self._sample_box_colors(pil_img, r) if pil_img else ("#1F1F1F", "#FFFFFF")
-                    result_blocks.append((r, " ".join(t), colors))
+                    combined = " ".join(t)
+                    if is_translatable_text(clean_ocr_text(combined)):
+                        colors = self._sample_box_colors(pil_img, r) if pil_img else ("#1F1F1F", "#FFFFFF")
+                        result_blocks.append((r, combined, colors))
 
             return result_blocks
         except Exception as e:
