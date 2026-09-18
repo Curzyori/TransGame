@@ -49,12 +49,12 @@ class GoogleEngine(BaseTranslator):
 
     def translate(self, text: str) -> str:
         try:
-            return self.translator.translate(text)
-        except Exception as e:
+            return self._translate_gtx(text)
+        except Exception as gtx_err:
             try:
-                return self._translate_gtx(text)
-            except Exception as gtx_err:
-                print(f"Google Translation Error (deep_translator: {e}, gtx: {gtx_err})")
+                return self.translator.translate(text)
+            except Exception as e:
+                print(f"Google Translation Error (gtx: {gtx_err}, deep_translator: {e})")
                 return f"Error: {e}"
 
     def translate_batch(self, texts: list[str]) -> list[str]:

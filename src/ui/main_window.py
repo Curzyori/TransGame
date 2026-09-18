@@ -44,7 +44,7 @@ class ControlPanel(QWidget):
     def __init__(self):
         super().__init__()
         self.worker = OCRWorker()
-        self.overlay = TransparentOverlay(title="USTA_TRANSLATION_OVERLAY", enable_hotkey=True)
+        self.overlay = TransparentOverlay(title="TRANSGAME_TRANSLATION_OVERLAY", enable_hotkey=True)
         self.overlay_1 = self.overlay  # backward compatibility alias
         self._main_capture_rect = QRect(self.worker.capture_rect)
         self._main_dpi_scale = self.worker.dpi_scale
@@ -62,7 +62,7 @@ class ControlPanel(QWidget):
         )
         self.temporary_region_hotkey_pressed.connect(self._handle_temporary_region_hotkey_pressed)
         self._temporary_region_hotkey.start()
-        self.setWindowTitle("USTA")
+        self.setWindowTitle("TransGame")
 
         # Set window icon
         icon_path = os.path.join(os.path.dirname(__file__), "assets", "usta.png")

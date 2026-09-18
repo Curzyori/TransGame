@@ -182,7 +182,7 @@ class TransparentOverlay(QWidget):
                 painter.drawRoundedRect(pill_rect, 6, 6)
 
                 painter.setPen(text_color)
-                painter.drawText(pill_rect, Qt.AlignCenter, text)
+                painter.drawText(pill_rect, Qt.AlignCenter | Qt.TextWordWrap, text)
 
     @Slot(str)
     def set_font_family(self, family):

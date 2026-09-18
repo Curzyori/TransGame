@@ -171,3 +171,9 @@ class ArgosEngine(BaseTranslator):
             except Exception as e:
                 print(f"Argos Translation Error: {e}")
                 return f"Error: {e}"
+
+    def translate_batch(self, texts: list[str]) -> list[str]:
+        """Translates a batch of texts offline."""
+        if not texts:
+            return []
+        return [self.translate(t) for t in texts]
