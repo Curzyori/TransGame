@@ -66,6 +66,7 @@ class PortalScreenshot(BaseScreenshot):
         self._started = False
         self._last_error = None
         self._gst_initialized = False
+        self._last_image = None
 
     @staticmethod
     def is_available() -> bool:
@@ -104,6 +105,7 @@ class PortalScreenshot(BaseScreenshot):
     def close(self):
         """Closes the active GStreamer pipeline and portal session."""
         with self._lock:
+            self._last_image = None
             if self._pipeline is not None and Gst is not None:
                 self._pipeline.set_state(Gst.State.NULL)
                 self._pipeline = None
@@ -379,7 +381,11 @@ class PortalScreenshot(BaseScreenshot):
 
     def _save_sample_region(self, sample: Any, rect: QRect, output_path: str, dpi_scale: float) -> bool:
         image = self._build_frame_image(sample)
+        self._last_image = image
         self._save_image_atomically(image, FULL_SCREEN_TEMP_PATH)
+        return self._crop_and_save(image, rect, output_path, dpi_scale)
+
+    def _crop_and_save(self, image: Image.Image, rect: QRect, output_path: str, dpi_scale: float) -> bool:
         width, height = image.size
 
         x1 = max(0, int(rect.x() * dpi_scale))
@@ -406,11 +412,14 @@ class PortalScreenshot(BaseScreenshot):
 
     def _capture_current_frame(self, rect: QRect, output_path: str, dpi_scale: float) -> bool:
         sample = self._appsink.emit("try-pull-sample", int(CAPTURE_TIMEOUT_SECONDS * Gst.SECOND))
-        if sample is None:
-            print("Waiting for Portal GStreamer sample...")
-            return False
+        if sample is not None:
+            return self._save_sample_region(sample, rect, output_path, dpi_scale)
 
-        return self._save_sample_region(sample, rect, output_path, dpi_scale)
+        if self._last_image is not None:
+            return self._crop_and_save(self._last_image, rect, output_path, dpi_scale)
+
+        print("Waiting for Portal GStreamer sample...")
+        return False
 
     def __del__(self):
         try:

@@ -5,7 +5,7 @@ from threading import Lock
 from PySide6.QtCore import QThread, Signal, QRect
 from src.core.ocr.ocr_manager import OCRManager
 from src.core.translation.translator_manager import TranslatorManager
-from src.core.translation.text_cleaner import clean_ocr_text
+from src.core.translation.text_cleaner import clean_ocr_text, is_translatable_text
 from src.core.exceptions import PortalCanceledError
 from src.core.screenshot import ScreenshotFactory, ImageProcessor
 from src.core.socket_publisher import TranslationPublisher
@@ -35,6 +35,9 @@ class OCRWorker(QThread):
         self._is_translating = False
         self.publisher = TranslationPublisher()
 
+        # Google Lens Phrase Translation Cache (phrase -> translation)
+        self.translation_cache = {}
+
         # Subtitle stabilization state
         self.active_signature = ""
         self.displayed_text = ""
@@ -45,6 +48,31 @@ class OCRWorker(QThread):
         self.candidate_first_seen = 0.0
         self.candidate_last_changed = 0.0
         self.empty_frames_count = 0
+
+    def _lookup_cache(self, text: str):
+        if not text:
+            return None
+        # 1. Exact match
+        if text in self.translation_cache:
+            return self.translation_cache[text]
+
+        # 2. Case-insensitive / stripped match
+        text_clean = text.strip()
+        text_lower = text_clean.lower()
+        for k, v in self.translation_cache.items():
+            if k.lower().strip() == text_lower:
+                self.translation_cache[text] = v
+                return v
+
+        # 3. Fuzzy match for OCR jitter on longer sentences (>= 8 chars)
+        if len(text_clean) >= 8:
+            for k, v in self.translation_cache.items():
+                if len(k) >= 8 and abs(len(k) - len(text_clean)) <= 4:
+                    if difflib.SequenceMatcher(None, text_clean, k).ratio() >= 0.88:
+                        self.translation_cache[text] = v
+                        return v
+
+        return None
 
     def set_rect(self, qrect, dpi_scale=None):
         with self.lock:
@@ -60,6 +88,7 @@ class OCRWorker(QThread):
     def set_engine(self, engine_name):
         with self.lock:
             self.ocr_manager.set_engine(engine_name)
+            self.translation_cache.clear()
             self.displayed_text = ""
             self.candidate_text = ""
             print(f"OCRWorker: Engine: {engine_name}")
@@ -67,6 +96,7 @@ class OCRWorker(QThread):
     def set_translator(self, translator_name):
         with self.lock:
             self.translator_manager.set_translator(translator_name)
+            self.translation_cache.clear()
             self.displayed_text = ""
             self.candidate_text = ""
             print(f"OCRWorker: Translator: {translator_name}")
@@ -74,6 +104,7 @@ class OCRWorker(QThread):
     def set_api_key(self, engine: str, api_key: str):
         with self.lock:
             self.translator_manager.set_api_key(engine, api_key)
+            self.translation_cache.clear()
             self.displayed_text = ""
             self.candidate_text = ""
             print(f"OCRWorker: API key set for: {engine}")
@@ -91,6 +122,7 @@ class OCRWorker(QThread):
         with self.lock:
             self.translator_manager.set_languages(source, target)
             self.ocr_manager.set_language(source)
+            self.translation_cache.clear()
             self.displayed_text = ""
             self.candidate_text = ""
             print(f"OCRWorker: Languages: {source} -> {target}")
@@ -104,36 +136,41 @@ class OCRWorker(QThread):
         self.publisher.stop()
         self.running_status.emit(False)
 
-    def _async_translate_blocks(self, blocks: list):
+    def _async_translate_blocks(self, current_screen_blocks: list, uncached_blocks: list = None):
+        if uncached_blocks is None:
+            uncached_blocks = current_screen_blocks
+
         with self._translation_lock:
             self._is_translating = True
         self.translation_status.emit(True)
         try:
-            valid_blocks = [(box, clean_ocr_text(text)) for box, text in blocks if text and clean_ocr_text(text)]
-            if not valid_blocks:
-                self.new_translation_pills.emit([])
-                return
+            valid_uncached = [(box, clean_ocr_text(text)) for box, text in uncached_blocks if text and clean_ocr_text(text)]
+            if valid_uncached:
+                raw_texts = [t for _, t in valid_uncached]
+                translated_texts = self.translator_manager.translate_batch(raw_texts)
+                source, target = self.translator_manager.get_languages()
 
-            raw_texts = [t for _, t in valid_blocks]
-            translated_texts = self.translator_manager.translate_batch(raw_texts)
+                for (box, orig), translated in zip(valid_uncached, translated_texts):
+                    if translated and not translated.startswith("Error:"):
+                        self.translation_cache[orig] = translated
+                        self.publisher.broadcast(
+                            original=orig,
+                            translated=translated,
+                            source_lang=source,
+                            target_lang=target,
+                            engine=self.translator_manager.current_translator_name,
+                        )
 
-            translated_pills = []
-            source, target = self.translator_manager.get_languages()
+            # Build full list of pills for all visible blocks currently on screen
+            all_pills = []
+            for box, text in current_screen_blocks:
+                cached = self._lookup_cache(text)
+                if cached:
+                    all_pills.append((box, cached))
 
-            for (box, orig), translated in zip(valid_blocks, translated_texts):
-                if translated and not translated.startswith("Error:"):
-                    translated_pills.append((box, translated))
-                    self.publisher.broadcast(
-                        original=orig,
-                        translated=translated,
-                        source_lang=source,
-                        target_lang=target,
-                        engine=self.translator_manager.current_translator_name,
-                    )
-
-            self.new_translation_pills.emit(translated_pills)
-            if translated_pills:
-                self.new_translation.emit(translated_pills[0][1], translated_pills[0][0])
+            self.new_translation_pills.emit(all_pills)
+            if all_pills:
+                self.new_translation.emit(all_pills[0][1], all_pills[0][0])
         except Exception as e:
             print(f"Translation Error: {e}")
         finally:
@@ -142,7 +179,7 @@ class OCRWorker(QThread):
             self.translation_status.emit(False)
 
     def _async_translate(self, text: str, target_box: QRect):
-        self._async_translate_blocks([(target_box, text)])
+        self._async_translate_blocks([(target_box, text)], [(target_box, text)])
 
     def run(self):
         self.publisher.start()
@@ -176,6 +213,9 @@ class OCRWorker(QThread):
 
                 abs_blocks = []
                 for b_box, b_text in raw_blocks:
+                    cleaned_t = clean_ocr_text(b_text)
+                    if not is_translatable_text(cleaned_t):
+                        continue
                     if b_box:
                         abs_box = QRect(
                             rect.x() + b_box.x(),
@@ -185,12 +225,11 @@ class OCRWorker(QThread):
                         )
                     else:
                         abs_box = QRect(rect)
-                    abs_blocks.append((abs_box, b_text))
+                    abs_blocks.append((abs_box, cleaned_t))
 
-                detected_signature = " | ".join(t for _, t in abs_blocks)
                 now = time.time()
 
-                if not detected_signature or len(detected_signature) < 3:
+                if not abs_blocks:
                     # Dialogue empty / absent
                     self.empty_frames_count += 1
                     if self.empty_frames_count >= 4:
@@ -204,50 +243,48 @@ class OCRWorker(QThread):
                 else:
                     self.empty_frames_count = 0
 
-                    # Check if it matches currently displayed text (jitter tolerance)
-                    is_same_as_active = False
-                    if self.active_signature:
-                        if detected_signature == self.active_signature:
-                            is_same_as_active = True
-                        elif len(detected_signature) > 8 and len(self.active_signature) > 8:
-                            if difflib.SequenceMatcher(None, detected_signature, self.active_signature).ratio() >= 0.88:
-                                is_same_as_active = True
+                    # Google Lens Phrase Translation Cache matching
+                    current_cached_pills = []
+                    uncached = []
+                    for box, text in abs_blocks:
+                        cached_translation = self._lookup_cache(text)
+                        if cached_translation:
+                            current_cached_pills.append((box, cached_translation))
+                        else:
+                            uncached.append((box, text))
 
-                    if is_same_as_active:
-                        # Current dialogue is still actively on screen! Hold it.
-                        self.candidate_signature = ""
-                        self.candidate_text = ""
-                        self.candidate_first_seen = 0.0
-                    else:
-                        # New or typewriter dialogue streaming in!
-                        if not self.candidate_signature:
-                            self.candidate_first_seen = now
-                            self.candidate_signature = detected_signature
-                            self.candidate_blocks = abs_blocks
-                            self.candidate_last_changed = now
-                        elif detected_signature != self.candidate_signature:
-                            self.candidate_signature = detected_signature
-                            self.candidate_blocks = abs_blocks
-                            self.candidate_last_changed = now
+                    # 1. Instantly render all cached pills on screen (0ms latency, zero flicker)
+                    if current_cached_pills:
+                        self.new_translation_pills.emit(current_cached_pills)
+                        self.new_translation.emit(current_cached_pills[0][1], current_cached_pills[0][0])
 
-                        time_stable = now - self.candidate_last_changed
-                        total_wait = now - self.candidate_first_seen
+                    # 2. Process uncached items if not currently translating
+                    if uncached and not translating:
+                        # Check if any uncached item is an expanding typewriter dialogue
+                        has_growing_dialogue = False
+                        for _, text in uncached:
+                            words = text.split()
+                            if len(words) > 3:
+                                # Multi-word dialogue: typewriter debounce
+                                if self.candidate_signature != text:
+                                    self.candidate_signature = text
+                                    self.candidate_first_seen = now
+                                    self.candidate_last_changed = now
+                                    has_growing_dialogue = True
+                                else:
+                                    time_stable = now - self.candidate_last_changed
+                                    total_wait = now - self.candidate_first_seen
+                                    if time_stable < self.STABILITY_COOLDOWN and total_wait < self.MAX_ACCUMULATION_TIME:
+                                        has_growing_dialogue = True
 
-                        # Stabilized condition: text stopped growing/changing for STABILITY_COOLDOWN or reached MAX_ACCUMULATION
-                        if (time_stable >= self.STABILITY_COOLDOWN or total_wait >= self.MAX_ACCUMULATION_TIME) and not translating:
-                            self.active_signature = self.candidate_signature
-                            self.displayed_text = self.candidate_signature
-                            blocks_to_translate = list(self.candidate_blocks)
+                        if not has_growing_dialogue:
                             self.candidate_signature = ""
-                            self.candidate_text = ""
                             self.candidate_first_seen = 0.0
-
                             threading.Thread(
                                 target=self._async_translate_blocks,
-                                args=(blocks_to_translate,),
+                                args=(list(abs_blocks), list(uncached)),
                                 daemon=True,
                             ).start()
-                            print(f"[{current_engine}] Stabilized dialogue: {self.active_signature}")
 
                 self.performance_update.emit(time.perf_counter() - start_total)
 
